@@ -1172,24 +1172,112 @@ export const bmiService = {
 };
 
 // ============ Gyaan/Wellness Service ============
+
+export interface WellnessTipData {
+    id: string;
+    title: string;
+    description: string;
+    content: string;
+    category: 'nutrition' | 'exercise' | 'meditation' | 'ayurveda';
+    icon: string;
+    duration: number | null;
+    completed: boolean;
+    favorite: boolean;
+    created_at: string;
+}
+
+export interface GyaanStats {
+    total_tips: number;
+    completed: number;
+    favorites: number;
+    progress: number;
+}
+
 export const gyaanService = {
-    getTips: () => placeholder('/gyaan/tips'),
-    toggleFavorite: (id: string) => placeholder(`/gyaan/tips/${id}/favorite`),
-    markComplete: (id: string) => placeholder(`/gyaan/tips/${id}/complete`),
+    /** List all active tips. Optional ?category= filter. */
+    getTips: (category?: string) =>
+        apiCall<WellnessTipData[]>(`/gyaan/tips/${category ? `?category=${category}` : ''}`),
+
+    /** Get a single tip by id. */
+    getTipDetail: (id: string) =>
+        apiCall<WellnessTipData>(`/gyaan/tips/${id}/`),
+
+    /** Toggle favourite status for a tip. Returns { favorite: boolean }. */
+    toggleFavorite: (id: string) =>
+        apiCall<{ favorite: boolean }>(`/gyaan/tips/${id}/favorite/`, { method: 'POST' }),
+
+    /** Toggle completed status for a tip. Returns { completed: boolean }. */
+    markComplete: (id: string) =>
+        apiCall<{ completed: boolean }>(`/gyaan/tips/${id}/complete/`, { method: 'POST' }),
+
+    /** Get tip stats: total, completed, favorites, progress %. */
+    getStats: () =>
+        apiCall<GyaanStats>('/gyaan/stats/'),
 };
 
-interface EmergencyContact {
+// ============ SOS Service ============
+
+export interface EmergencyContactData {
     id: string;
     name: string;
     phone: string;
-    relationship?: string;
-    isPrimary?: boolean;
+    relationship: string;
+    is_primary: boolean;
+    created_at: string;
 }
 
-// ============ SOS Service ============
+export interface CreateEmergencyContact {
+    name: string;
+    phone: string;
+    relationship?: string;
+    is_primary?: boolean;
+}
+
+export interface SOSAlertData {
+    id: string;
+    latitude: number | null;
+    longitude: number | null;
+    resolved: boolean;
+    resolved_at: string | null;
+    notified_contacts: EmergencyContactData[];
+    created_at: string;
+}
+
 export const sosService = {
-    getEmergencyContacts: () => placeholder('/sos/contacts'),
-    addEmergencyContact: (contact: EmergencyContact) => placeholder('/sos/contacts'),
-    deleteEmergencyContact: (id: string) => placeholder(`/sos/contacts/${id}`),
-    triggerSOS: (location?: { lat: number; lng: number }) => placeholder('/sos/trigger'),
+    /** List all emergency contacts for the user. */
+    getEmergencyContacts: () =>
+        apiCall<EmergencyContactData[]>('/sos/contacts/'),
+
+    /** Add a new emergency contact. */
+    addEmergencyContact: (contact: CreateEmergencyContact) =>
+        apiCall<EmergencyContactData>('/sos/contacts/', {
+            method: 'POST',
+            body: JSON.stringify(contact),
+        }),
+
+    /** Update an emergency contact. */
+    updateEmergencyContact: (id: string, data: Partial<CreateEmergencyContact>) =>
+        apiCall<EmergencyContactData>(`/sos/contacts/${id}/`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        }),
+
+    /** Delete an emergency contact. */
+    deleteEmergencyContact: (id: string) =>
+        apiCall<void>(`/sos/contacts/${id}/`, { method: 'DELETE' }),
+
+    /** Trigger an SOS alert. Optional location. */
+    triggerSOS: (location?: { latitude: number; longitude: number }) =>
+        apiCall<SOSAlertData>('/sos/trigger/', {
+            method: 'POST',
+            body: JSON.stringify(location ?? {}),
+        }),
+
+    /** List all SOS alert history. */
+    getAlerts: () =>
+        apiCall<SOSAlertData[]>('/sos/alerts/'),
+
+    /** Resolve an SOS alert. */
+    resolveAlert: (id: string) =>
+        apiCall<SOSAlertData>(`/sos/alerts/${id}/resolve/`, { method: 'POST' }),
 };

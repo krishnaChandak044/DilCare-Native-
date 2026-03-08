@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Linking, Alert, Animated, Dimensions,
+    RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,9 +9,10 @@ import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
+import { Skeleton } from '../components/ui/Skeleton';
 import { Colors, Gradients, Shadows } from '../theme';
 import { useTheme } from '../hooks/useTheme';
-import { sosService } from '../services/api';
+import { sosService, EmergencyContactData } from '../services/api';
 import * as Haptics from 'expo-haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -18,25 +20,40 @@ const H_PAD = 20;
 const CARD_GAP = 10;
 const EMERG_CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - CARD_GAP) / 2;
 
-interface EmergencyContact {
-    id: string; name: string; phone: string; relationship: string; isPrimary: boolean;
-}
-
 const SOSEmergencyScreen = () => {
     const { colors } = useTheme();
     const navigation = useNavigation();
-    const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+    const [contacts, setContacts] = useState<EmergencyContactData[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [showAddContact, setShowAddContact] = useState(false);
     const [newName, setNewName] = useState('');
     const [newPhone, setNewPhone] = useState('');
     const [newRelation, setNewRelation] = useState('');
+    const [saving, setSaving] = useState(false);
     const [isHolding, setIsHolding] = useState(false);
     const [holdProgress, setHoldProgress] = useState(0);
     const holdTimer = useRef<ReturnType<typeof setInterval>>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
+    // ── fetch contacts ──────────────────────────────────────────────────────
+    const fetchContacts = useCallback(async () => {
+        const res = await sosService.getEmergencyContacts();
+        if (res.data) setContacts(res.data);
+    }, []);
+
+    useEffect(() => {
+        fetchContacts().finally(() => setLoading(false));
+    }, [fetchContacts]);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await fetchContacts();
+        setRefreshing(false);
+    };
+
     // Pulsing animation for SOS button
-    React.useEffect(() => {
+    useEffect(() => {
         Animated.loop(
             Animated.sequence([
                 Animated.timing(pulseAnim, { toValue: 1.08, duration: 1000, useNativeDriver: true }),
@@ -45,8 +62,8 @@ const SOSEmergencyScreen = () => {
         ).start();
     }, []);
 
-    // Cleanup timer on unmount to prevent memory leak
-    React.useEffect(() => {
+    // Cleanup timer on unmount
+    useEffect(() => {
         return () => {
             if (holdTimer.current) clearInterval(holdTimer.current);
         };
@@ -61,7 +78,7 @@ const SOSEmergencyScreen = () => {
             progress += 3.33;
             setHoldProgress(progress);
             if (progress >= 100) {
-                clearInterval(holdTimer.current);
+                clearInterval(holdTimer.current!);
                 triggerSOS();
             }
         }, 100);
@@ -75,20 +92,47 @@ const SOSEmergencyScreen = () => {
 
     const triggerSOS = async () => {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        Alert.alert('🚨 SOS Triggered', 'Emergency contacts will be notified with your location.');
-        await sosService.triggerSOS();
+        const res = await sosService.triggerSOS();
+        if (res.data) {
+            const count = res.data.notified_contacts?.length ?? 0;
+            Alert.alert('🚨 SOS Triggered', `Emergency alert sent! ${count} contact(s) notified.`);
+        } else {
+            Alert.alert('🚨 SOS Triggered', 'Emergency contacts will be notified with your location.');
+        }
     };
 
     const addContact = async () => {
         if (!newName.trim() || !newPhone.trim()) return;
-        const contact: EmergencyContact = {
-            id: Date.now().toString(), name: newName, phone: newPhone,
-            relationship: newRelation, isPrimary: contacts.length === 0,
-        };
-        setContacts(prev => [...prev, contact]);
-        setNewName(''); setNewPhone(''); setNewRelation('');
-        setShowAddContact(false);
-        await sosService.addEmergencyContact(contact);
+        setSaving(true);
+        const res = await sosService.addEmergencyContact({
+            name: newName.trim(),
+            phone: newPhone.trim(),
+            relationship: newRelation.trim(),
+            is_primary: contacts.length === 0,
+        });
+        setSaving(false);
+        if (res.data) {
+            setContacts(prev => [...prev, res.data!]);
+            setNewName(''); setNewPhone(''); setNewRelation('');
+            setShowAddContact(false);
+        } else {
+            Alert.alert('Error', res.error ?? 'Failed to add contact.');
+        }
+    };
+
+    const deleteContact = (id: string, name: string) => {
+        Alert.alert('Delete Contact', `Remove ${name}?`, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete', style: 'destructive',
+                onPress: async () => {
+                    const res = await sosService.deleteEmergencyContact(id);
+                    if (res.status === 204 || !res.error) {
+                        setContacts(prev => prev.filter(c => c.id !== id));
+                    }
+                },
+            },
+        ]);
     };
 
     const callNumber = (phone: string) => {
@@ -114,7 +158,8 @@ const SOSEmergencyScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                 {/* SOS Button */}
                 <View style={styles.sosSection}>
                     <Text style={styles.sosInstruction}>Hold for 3 seconds to trigger SOS</Text>
@@ -161,7 +206,12 @@ const SOSEmergencyScreen = () => {
                     </TouchableOpacity>
                 </View>
 
-                {contacts.length === 0 ? (
+                {loading ? (
+                    <>
+                        <Skeleton width={'100%'} height={70} style={{ borderRadius: 12, marginBottom: 8 }} />
+                        <Skeleton width={'100%'} height={70} style={{ borderRadius: 12, marginBottom: 8 }} />
+                    </>
+                ) : contacts.length === 0 ? (
                     <View style={styles.emptyState}>
                         <Ionicons name="people-outline" size={48} color={Colors.border} />
                         <Text style={styles.emptyTitle}>No Emergency Contacts</Text>
@@ -189,7 +239,7 @@ const SOSEmergencyScreen = () => {
                                         <TouchableOpacity onPress={() => callNumber(contact.phone)} style={styles.callBtn}>
                                             <Ionicons name="call" size={18} color={Colors.success} />
                                         </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => setContacts(prev => prev.filter(c => c.id !== contact.id))}>
+                                        <TouchableOpacity onPress={() => deleteContact(contact.id, contact.name)}>
                                             <Ionicons name="trash" size={18} color={Colors.destructive} />
                                         </TouchableOpacity>
                                     </View>
@@ -205,8 +255,8 @@ const SOSEmergencyScreen = () => {
                 <Input label="Name" placeholder="Contact name" value={newName} onChangeText={setNewName} />
                 <Input label="Phone Number" placeholder="+91 XXXXX XXXXX" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" />
                 <Input label="Relationship" placeholder="e.g., Father, Mother" value={newRelation} onChangeText={setNewRelation} />
-                <Button variant="gradient" gradientColors={Gradients.red} onPress={addContact} style={{ marginTop: 8 }}>
-                    Save Contact
+                <Button variant="gradient" gradientColors={Gradients.red} onPress={addContact} disabled={saving} style={{ marginTop: 8 }}>
+                    {saving ? 'Saving…' : 'Save Contact'}
                 </Button>
             </Modal>
         </View>
