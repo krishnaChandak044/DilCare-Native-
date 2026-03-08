@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform,
+    View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, RefreshControl, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -13,32 +13,45 @@ import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { medicineService } from '../services/api';
 
-interface Medicine {
+interface TodayMedicine {
     id: string;
     name: string;
     dosage: string;
     frequency: string;
     time: string;
     taken: boolean;
-    missed?: boolean;
+    missed: boolean;
+    intake_id: string | null;
 }
 
 interface Prescription {
     id: string;
     name: string;
-    doctorName: string;
-    date: string;
-    fileType: 'image' | 'pdf' | 'other';
+    doctor_name: string;
+    prescription_date: string | null;
+    file_type: 'image' | 'pdf' | 'other';
+}
+
+interface MedicineSummary {
+    total_medicines: number;
+    today_total: number;
+    today_taken: number;
+    today_missed: number;
+    today_pending: number;
 }
 
 const MedicineReminderScreen = () => {
     const { colors } = useTheme();
     const navigation = useNavigation();
-    const [medicines, setMedicines] = useState<Medicine[]>([]);
+    const [medicines, setMedicines] = useState<TodayMedicine[]>([]);
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
+    const [summary, setSummary] = useState<MedicineSummary | null>(null);
     const [showAddMedicine, setShowAddMedicine] = useState(false);
     const [_showAddPrescription, _setShowAddPrescription] = useState(false);
     const [activeTab, setActiveTab] = useState<'today' | 'prescriptions'>('today');
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [adding, setAdding] = useState(false);
 
     // Form state
     const [newName, setNewName] = useState('');
@@ -46,31 +59,116 @@ const MedicineReminderScreen = () => {
     const [newFrequency, setNewFrequency] = useState('');
     const [newTime, setNewTime] = useState('');
 
-    const toggleMedicineTaken = async (id: string) => {
+    const fetchData = useCallback(async () => {
+        try {
+            const [todayRes, prescriptionsRes, summaryRes] = await Promise.all([
+                medicineService.getTodayMedicines(),
+                medicineService.getPrescriptions(),
+                medicineService.getSummary(),
+            ]);
+
+            if (todayRes.data) setMedicines(todayRes.data);
+            if (prescriptionsRes.data) setPrescriptions(prescriptionsRes.data);
+            if (summaryRes.data) setSummary(summaryRes.data);
+        } catch (error) {
+            console.error('Failed to fetch medicine data:', error);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchData();
+    }, [fetchData]);
+
+    const toggleMedicineTaken = async (intakeId: string | null) => {
+        if (!intakeId) return;
+
+        // Optimistic update
         setMedicines(prev =>
-            prev.map(m => m.id === id ? { ...m, taken: !m.taken } : m)
+            prev.map(m => m.intake_id === intakeId ? { ...m, taken: !m.taken, missed: false } : m)
         );
-        await medicineService.toggleMedicineTaken(id);
+
+        try {
+            await medicineService.toggleMedicineIntake(intakeId);
+            // Refresh summary
+            const summaryRes = await medicineService.getSummary();
+            if (summaryRes.data) setSummary(summaryRes.data);
+        } catch (error) {
+            console.error('Failed to toggle medicine:', error);
+            // Revert on error
+            fetchData();
+        }
     };
 
     const addMedicine = async () => {
         if (!newName.trim()) return;
-        const newMedicine: Medicine = {
-            id: Date.now().toString(),
-            name: newName,
-            dosage: newDosage,
-            frequency: newFrequency,
-            time: newTime || '08:00 AM',
-            taken: false,
-        };
-        setMedicines(prev => [...prev, newMedicine]);
-        setNewName(''); setNewDosage(''); setNewFrequency(''); setNewTime('');
-        setShowAddMedicine(false);
-        await medicineService.addMedicine(newMedicine);
+
+        setAdding(true);
+        try {
+            // Convert time to HH:MM format
+            const scheduleTime = newTime.trim() || '08:00';
+
+            await medicineService.addMedicine({
+                name: newName.trim(),
+                dosage: newDosage.trim() || undefined,
+                frequency: mapFrequency(newFrequency),
+                schedule_times: scheduleTime,
+            });
+
+            setNewName('');
+            setNewDosage('');
+            setNewFrequency('');
+            setNewTime('');
+            setShowAddMedicine(false);
+
+            // Refresh data
+            fetchData();
+        } catch (error) {
+            console.error('Failed to add medicine:', error);
+        } finally {
+            setAdding(false);
+        }
     };
 
-    const takenCount = medicines.filter(m => m.taken).length;
-    const missedCount = medicines.filter(m => m.missed).length;
+    const deletePrescription = async (id: string) => {
+        try {
+            await medicineService.deletePrescription(id);
+            setPrescriptions(prev => prev.filter(p => p.id !== id));
+        } catch (error) {
+            console.error('Failed to delete prescription:', error);
+        }
+    };
+
+    // Map user-friendly frequency to backend value
+    const mapFrequency = (freq: string): string => {
+        const lower = freq.toLowerCase();
+        if (lower.includes('once')) return 'once_daily';
+        if (lower.includes('twice')) return 'twice_daily';
+        if (lower.includes('three') || lower.includes('thrice')) return 'thrice_daily';
+        if (lower.includes('four')) return 'four_times';
+        if (lower.includes('week')) return 'weekly';
+        if (lower.includes('need')) return 'as_needed';
+        return 'once_daily';
+    };
+
+    const takenCount = summary?.today_taken ?? medicines.filter(m => m.taken).length;
+    const missedCount = summary?.today_missed ?? medicines.filter(m => m.missed).length;
+    const totalCount = summary?.total_medicines ?? medicines.length;
+
+    if (loading) {
+        return (
+            <View style={[styles.container, styles.centered, { backgroundColor: colors.background }]}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+            </View>
+        );
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -101,14 +199,21 @@ const MedicineReminderScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                style={styles.scrollView} 
+                contentContainerStyle={styles.scrollContent} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+                }
+            >
                 {/* Summary Card */}
                 <Card style={styles.summaryCard}>
                     <CardContent>
                         <View style={styles.summaryRow}>
                             <View style={styles.summaryItem}>
                                 <Ionicons name="medical" size={20} color={Colors.primary} />
-                                <Text style={styles.summaryValue}>{medicines.length}</Text>
+                                <Text style={styles.summaryValue}>{totalCount}</Text>
                                 <Text style={styles.summaryLabel}>Total</Text>
                             </View>
                             <View style={styles.summaryItem}>
@@ -143,8 +248,8 @@ const MedicineReminderScreen = () => {
                                 </Button>
                             </View>
                         ) : (
-                            medicines.map((medicine) => (
-                                <TouchableOpacity key={medicine.id} onPress={() => toggleMedicineTaken(medicine.id)} activeOpacity={0.7}>
+                            medicines.map((medicine, index) => (
+                                <TouchableOpacity key={`${medicine.id}-${medicine.time}-${index}`} onPress={() => toggleMedicineTaken(medicine.intake_id)} activeOpacity={0.7}>
                                     <Card style={[styles.medicineCard, medicine.taken && styles.medicineTaken]}>
                                         <CardContent>
                                             <View style={styles.medicineRow}>
@@ -158,7 +263,7 @@ const MedicineReminderScreen = () => {
                                                     </View>
                                                     <View style={styles.medicineDetails}>
                                                         <Text style={[styles.medicineName, medicine.taken && styles.medicineNameTaken]}>{medicine.name}</Text>
-                                                        <Text style={styles.medicineDosage}>{medicine.dosage} • {medicine.frequency}</Text>
+                                                        <Text style={styles.medicineDosage}>{medicine.dosage || 'No dosage'} • {medicine.frequency}</Text>
                                                         <View style={styles.timeRow}>
                                                             <Ionicons name="time" size={12} color={Colors.mutedForeground} />
                                                             <Text style={styles.medicineTime}>{medicine.time}</Text>
@@ -200,12 +305,14 @@ const MedicineReminderScreen = () => {
                                             <Ionicons name="document-text" size={24} color={Colors.primary} />
                                             <View style={{ flex: 1, marginLeft: 12 }}>
                                                 <Text style={styles.prescriptionName}>{rx.name}</Text>
-                                                <Text style={styles.prescriptionDoctor}>Dr. {rx.doctorName}</Text>
-                                                <Text style={styles.prescriptionDate}>{rx.date}</Text>
+                                                {rx.doctor_name ? (
+                                                    <Text style={styles.prescriptionDoctor}>Dr. {rx.doctor_name}</Text>
+                                                ) : null}
+                                                {rx.prescription_date ? (
+                                                    <Text style={styles.prescriptionDate}>{rx.prescription_date}</Text>
+                                                ) : null}
                                             </View>
-                                            <TouchableOpacity onPress={() => {
-                                                setPrescriptions(prev => prev.filter(p => p.id !== rx.id));
-                                            }}>
+                                            <TouchableOpacity onPress={() => deletePrescription(rx.id)}>
                                                 <Ionicons name="trash" size={20} color={Colors.destructive} />
                                             </TouchableOpacity>
                                         </View>
@@ -223,9 +330,15 @@ const MedicineReminderScreen = () => {
                 <Input label="Medicine Name" placeholder="e.g., Metformin" value={newName} onChangeText={setNewName} />
                 <Input label="Dosage" placeholder="e.g., 500mg" value={newDosage} onChangeText={setNewDosage} />
                 <Input label="Frequency" placeholder="e.g., Twice daily" value={newFrequency} onChangeText={setNewFrequency} />
-                <Input label="Time" placeholder="e.g., 08:00 AM" value={newTime} onChangeText={setNewTime} />
-                <Button variant="gradient" gradientColors={Gradients.primary} onPress={addMedicine} style={{ marginTop: 8 }}>
-                    Add Medicine
+                <Input label="Time (HH:MM)" placeholder="e.g., 08:00" value={newTime} onChangeText={setNewTime} />
+                <Button 
+                    variant="gradient" 
+                    gradientColors={Gradients.primary} 
+                    onPress={addMedicine} 
+                    style={{ marginTop: 8 }}
+                    disabled={adding || !newName.trim()}
+                >
+                    {adding ? 'Adding...' : 'Add Medicine'}
                 </Button>
             </Modal>
         </View>
@@ -234,6 +347,7 @@ const MedicineReminderScreen = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },
+    centered: { justifyContent: 'center', alignItems: 'center' },
     header: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         paddingHorizontal: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 12,

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Dimensions,
+    ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -12,7 +13,7 @@ import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
-import { stepService } from '../services/api';
+import { stepService, TodaySteps, StepStats, WeeklyChart } from '../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const H_PAD = 20;
@@ -22,36 +23,122 @@ const ACHV_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - G_GAP) / 2;
 const StepTrackerScreen = () => {
     const { colors } = useTheme();
     const navigation = useNavigation();
-    const [steps, setSteps] = useState(0);
-    const [goal, setGoal] = useState(10000);
+    const [todayData, setTodayData] = useState<TodaySteps | null>(null);
+    const [stats, setStats] = useState<StepStats | null>(null);
+    const [weeklyChart, setWeeklyChart] = useState<WeeklyChart | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [adding, setAdding] = useState(false);
+    
     const [showManualInput, setShowManualInput] = useState(false);
     const [showGoalInput, setShowGoalInput] = useState(false);
     const [manualSteps, setManualSteps] = useState('');
     const [newGoal, setNewGoal] = useState('');
-    const [googleFitConnected, setGoogleFitConnected] = useState(false);
     const screenWidth = Dimensions.get('window').width;
 
-    const progressPercent = Math.min((steps / goal) * 100, 100);
-    const caloriesBurned = Math.round(steps * 0.04);
-    const distanceKm = (steps * 0.000762).toFixed(1);
-    const activeMinutes = Math.round(steps / 100);
+    const steps = todayData?.total_steps ?? 0;
+    const goal = todayData?.goal_steps ?? 10000;
+    const progressPercent = todayData?.progress_percent ?? 0;
+    const caloriesBurned = todayData?.calories_burned ?? 0;
+    const distanceKm = todayData?.distance_km ?? 0;
+    const activeMinutes = todayData?.active_minutes ?? 0;
+
+    const fetchData = useCallback(async () => {
+        try {
+            const [todayRes, statsRes, chartRes] = await Promise.all([
+                stepService.getStepData(),
+                stepService.getStepStats(),
+                stepService.getWeeklyChart(),
+            ]);
+
+            if (todayRes.data) setTodayData(todayRes.data);
+            if (statsRes.data) setStats(statsRes.data);
+            if (chartRes.data) setWeeklyChart(chartRes.data);
+        } catch (error) {
+            console.error('Failed to fetch step data:', error);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const onRefresh = useCallback(() => {
+        setRefreshing(true);
+        fetchData();
+    }, [fetchData]);
 
     const addManualSteps = async () => {
         const num = parseInt(manualSteps);
-        if (isNaN(num) || num <= 0) return;
-        setSteps(prev => prev + num);
-        setManualSteps('');
-        setShowManualInput(false);
-        await stepService.addManualSteps(num);
+        if (isNaN(num) || num <= 0) {
+            Alert.alert('Invalid', 'Please enter a valid number of steps');
+            return;
+        }
+        
+        setAdding(true);
+        try {
+            const res = await stepService.addManualSteps(num);
+            if (res.data) {
+                setTodayData(res.data);
+                // Refresh stats and chart too
+                const [statsRes, chartRes] = await Promise.all([
+                    stepService.getStepStats(),
+                    stepService.getWeeklyChart(),
+                ]);
+                if (statsRes.data) setStats(statsRes.data);
+                if (chartRes.data) setWeeklyChart(chartRes.data);
+            } else {
+                Alert.alert('Error', res.error || 'Failed to add steps');
+            }
+            setManualSteps('');
+            setShowManualInput(false);
+        } catch (error) {
+            Alert.alert('Error', 'Failed to add steps');
+        } finally {
+            setAdding(false);
+        }
+    };
+
+    const addQuickSteps = async (count: number) => {
+        const res = await stepService.addManualSteps(count);
+        if (res.data) {
+            setTodayData(res.data);
+            const [statsRes, chartRes] = await Promise.all([
+                stepService.getStepStats(),
+                stepService.getWeeklyChart(),
+            ]);
+            if (statsRes.data) setStats(statsRes.data);
+            if (chartRes.data) setWeeklyChart(chartRes.data);
+        }
     };
 
     const updateGoal = async () => {
         const num = parseInt(newGoal);
-        if (isNaN(num) || num <= 0) return;
-        setGoal(num);
-        setNewGoal('');
-        setShowGoalInput(false);
-        await stepService.updateStepGoal(num);
+        if (isNaN(num) || num <= 0) {
+            Alert.alert('Invalid', 'Please enter a valid step goal');
+            return;
+        }
+        
+        setAdding(true);
+        try {
+            const res = await stepService.updateStepGoal({ daily_goal: num });
+            if (res.data) {
+                // Refresh all data to reflect new goal
+                fetchData();
+                Alert.alert('Success', `Goal updated to ${num.toLocaleString()} steps`);
+            } else {
+                Alert.alert('Error', res.error || 'Failed to update goal');
+            }
+            setNewGoal('');
+            setShowGoalInput(false);
+        } catch (error) {
+            Alert.alert('Error', 'Failed to update goal');
+        } finally {
+            setAdding(false);
+        }
     };
 
     const getMotivationalMessage = () => {
@@ -62,10 +149,28 @@ const StepTrackerScreen = () => {
         return '🌅 Start your day with a walk!';
     };
 
-    const weeklyData = {
+    const weeklyData = weeklyChart ? {
+        labels: weeklyChart.labels,
+        datasets: [{ data: weeklyChart.data.map(d => d || 0) }],
+    } : {
         labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        datasets: [{ data: [0, 0, 0, 0, 0, 0, steps > 0 ? steps : 0] }],
+        datasets: [{ data: [0, 0, 0, 0, 0, 0, 0] }],
     };
+
+    const achievements = [
+        { name: 'First Steps', unlocked: steps > 0 },
+        { name: '5K Steps', unlocked: steps >= 5000 },
+        { name: '10K Steps', unlocked: steps >= 10000 },
+        { name: `${stats?.current_streak ?? 0}d Streak`, unlocked: (stats?.current_streak ?? 0) >= 3 },
+    ];
+
+    if (loading) {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color={Colors.orange500} />
+            </View>
+        );
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -79,7 +184,9 @@ const StepTrackerScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.orange500} />}
+            >
                 {/* Main Progress Card */}
                 <Card style={styles.mainCard}>
                     <CardContent>
@@ -101,13 +208,13 @@ const StepTrackerScreen = () => {
                         <View style={styles.statsRow}>
                             <View style={styles.statItem}>
                                 <Ionicons name="flame" size={18} color={Colors.red500} />
-                                <Text style={styles.statValue}>{caloriesBurned}</Text>
+                                <Text style={styles.statValue}>{Math.round(caloriesBurned)}</Text>
                                 <Text style={styles.statLabel}>Calories</Text>
                             </View>
                             <View style={styles.statDivider} />
                             <View style={styles.statItem}>
                                 <Ionicons name="map" size={18} color={Colors.blue500} />
-                                <Text style={styles.statValue}>{distanceKm}</Text>
+                                <Text style={styles.statValue}>{distanceKm.toFixed(1)}</Text>
                                 <Text style={styles.statLabel}>km</Text>
                             </View>
                             <View style={styles.statDivider} />
@@ -125,7 +232,7 @@ const StepTrackerScreen = () => {
                     <Button
                         variant="gradient"
                         gradientColors={Gradients.orange}
-                        onPress={() => setSteps(prev => prev + 100)}
+                        onPress={() => addQuickSteps(100)}
                         icon={<Ionicons name="add" size={18} color={Colors.white} />}
                         style={{ flex: 1 }}
                     >
@@ -141,29 +248,36 @@ const StepTrackerScreen = () => {
                     </Button>
                 </View>
 
-                {/* Google Fit Connection */}
-                <Card style={styles.fitCard}>
-                    <CardContent>
-                        <View style={styles.fitRow}>
-                            <View style={styles.fitInfo}>
-                                <Ionicons name="fitness" size={24} color={googleFitConnected ? Colors.success : Colors.mutedForeground} />
-                                <View style={{ marginLeft: 12, flex: 1 }}>
-                                    <Text style={styles.fitTitle}>Google Fit</Text>
-                                    <Text style={styles.fitSubtitle}>
-                                        {googleFitConnected ? 'Connected & syncing' : 'Connect to auto-sync steps'}
-                                    </Text>
+                {/* Streaks Card */}
+                {stats && (
+                    <Card style={styles.fitCard}>
+                        <CardContent>
+                            <Text style={styles.chartTitle}>Streaks & Summary</Text>
+                            <View style={styles.streakRow}>
+                                <View style={styles.streakItem}>
+                                    <Ionicons name="flame" size={22} color={Colors.orange500} />
+                                    <Text style={styles.streakValue}>{stats.current_streak}</Text>
+                                    <Text style={styles.streakLabel}>Current</Text>
+                                </View>
+                                <View style={styles.streakItem}>
+                                    <Ionicons name="trophy" size={22} color={Colors.amber500} />
+                                    <Text style={styles.streakValue}>{stats.longest_streak}</Text>
+                                    <Text style={styles.streakLabel}>Longest</Text>
+                                </View>
+                                <View style={styles.streakItem}>
+                                    <Ionicons name="trending-up" size={22} color={Colors.emerald500} />
+                                    <Text style={styles.streakValue}>{stats.week_avg_steps.toLocaleString()}</Text>
+                                    <Text style={styles.streakLabel}>Week Avg</Text>
+                                </View>
+                                <View style={styles.streakItem}>
+                                    <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />
+                                    <Text style={styles.streakValue}>{stats.week_days_goal_met}/7</Text>
+                                    <Text style={styles.streakLabel}>Goal Met</Text>
                                 </View>
                             </View>
-                            <Button
-                                variant={googleFitConnected ? 'secondary' : 'primary'}
-                                size="sm"
-                                onPress={() => setGoogleFitConnected(!googleFitConnected)}
-                            >
-                                {googleFitConnected ? 'Disconnect' : 'Connect'}
-                            </Button>
-                        </View>
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Weekly Chart */}
                 <Card style={styles.chartCard}>
@@ -194,11 +308,11 @@ const StepTrackerScreen = () => {
                 {/* Achievements */}
                 <Text style={styles.sectionTitle}>Achievements</Text>
                 <View style={styles.achievementsGrid}>
-                    {['First Steps', '5K Steps', '10K Steps', 'Week Streak'].map((badge, i) => (
-                        <Card key={badge} style={styles.achievementCard}>
+                    {achievements.map((badge) => (
+                        <Card key={badge.name} style={styles.achievementCard}>
                             <CardContent style={{ alignItems: 'center', paddingVertical: 14 }}>
-                                <Ionicons name="trophy" size={24} color={steps > 0 && i === 0 ? Colors.amber500 : Colors.border} />
-                                <Text style={[styles.achievementText, steps > 0 && i === 0 && { color: Colors.foreground }]}>{badge}</Text>
+                                <Ionicons name="trophy" size={24} color={badge.unlocked ? Colors.amber500 : Colors.border} />
+                                <Text style={[styles.achievementText, badge.unlocked && { color: Colors.foreground }]}>{badge.name}</Text>
                             </CardContent>
                         </Card>
                     ))}
@@ -209,12 +323,16 @@ const StepTrackerScreen = () => {
 
             <Modal visible={showManualInput} onClose={() => setShowManualInput(false)} title="Add Steps Manually">
                 <Input label="Number of Steps" placeholder="e.g., 500" value={manualSteps} onChangeText={setManualSteps} keyboardType="numeric" />
-                <Button variant="gradient" gradientColors={Gradients.orange} onPress={addManualSteps} style={{ marginTop: 8 }}>Add Steps</Button>
+                <Button variant="gradient" gradientColors={Gradients.orange} onPress={addManualSteps} style={{ marginTop: 8 }} disabled={adding}>
+                    {adding ? 'Adding...' : 'Add Steps'}
+                </Button>
             </Modal>
 
             <Modal visible={showGoalInput} onClose={() => setShowGoalInput(false)} title="Set Daily Goal">
                 <Input label="Step Goal" placeholder="e.g., 10000" value={newGoal} onChangeText={setNewGoal} keyboardType="numeric" />
-                <Button variant="gradient" gradientColors={Gradients.primary} onPress={updateGoal} style={{ marginTop: 8 }}>Update Goal</Button>
+                <Button variant="gradient" gradientColors={Gradients.primary} onPress={updateGoal} style={{ marginTop: 8 }} disabled={adding}>
+                    {adding ? 'Updating...' : 'Update Goal'}
+                </Button>
             </Modal>
         </View>
     );
@@ -250,6 +368,10 @@ const styles = StyleSheet.create({
     fitInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
     fitTitle: { fontSize: 15, fontWeight: '600', color: Colors.foreground },
     fitSubtitle: { fontSize: 12, color: Colors.mutedForeground, marginTop: 2 },
+    streakRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+    streakItem: { alignItems: 'center', flex: 1, gap: 4 },
+    streakValue: { fontSize: 16, fontWeight: '700', color: Colors.foreground },
+    streakLabel: { fontSize: 10, color: Colors.mutedForeground },
     chartCard: { marginBottom: 20 },
     chartTitle: { fontSize: 16, fontWeight: '700', color: Colors.foreground, marginBottom: 12 },
     chart: { borderRadius: BorderRadius.md, marginLeft: -16 },

@@ -1,26 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform,
+    RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { Skeleton } from '../components/ui/Skeleton';
 import { Colors, BorderRadius } from '../theme';
 import { useTheme } from '../hooks/useTheme';
-import { gyaanService } from '../services/api';
-
-interface GyaanTip {
-    id: string;
-    category: 'nutrition' | 'exercise' | 'meditation' | 'ayurveda';
-    title: string;
-    description: string;
-    content: string;
-    duration?: number;
-    completed: boolean;
-    favorite: boolean;
-}
+import { gyaanService, WellnessTipData } from '../services/api';
 
 const CATEGORIES = [
     { key: 'all', label: 'All', icon: 'apps', color: Colors.primary },
@@ -33,23 +24,56 @@ const CATEGORIES = [
 const GyaanCornerScreen = () => {
     const { colors } = useTheme();
     const navigation = useNavigation();
-    const [tips, setTips] = useState<GyaanTip[]>([]);
+    const [tips, setTips] = useState<WellnessTipData[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [timerActive, setTimerActive] = useState<string | null>(null);
     const [timerSeconds, setTimerSeconds] = useState(0);
 
-    const filteredTips = selectedCategory === 'all' ? tips : tips.filter(t => t.category === selectedCategory);
+    // ── fetch tips ───────────────────────────────────────────────────────────
+    const fetchTips = useCallback(async (category?: string) => {
+        const cat = category && category !== 'all' ? category : undefined;
+        const res = await gyaanService.getTips(cat);
+        if (res.data) setTips(res.data);
+    }, []);
 
-    const toggleComplete = (id: string) => {
+    useEffect(() => {
+        fetchTips(selectedCategory).finally(() => setLoading(false));
+    }, []);
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await fetchTips(selectedCategory);
+        setRefreshing(false);
+    };
+
+    const onCategoryChange = async (key: string) => {
+        setSelectedCategory(key);
+        setLoading(true);
+        await fetchTips(key);
+        setLoading(false);
+    };
+
+    // ── toggles ──────────────────────────────────────────────────────────────
+    const toggleComplete = async (id: string) => {
+        // Optimistic
         setTips(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
-        gyaanService.markComplete(id);
+        const res = await gyaanService.markComplete(id);
+        if (res.data) {
+            setTips(prev => prev.map(t => t.id === id ? { ...t, completed: res.data!.completed } : t));
+        }
     };
 
-    const toggleFavorite = (id: string) => {
+    const toggleFavorite = async (id: string) => {
         setTips(prev => prev.map(t => t.id === id ? { ...t, favorite: !t.favorite } : t));
-        gyaanService.toggleFavorite(id);
+        const res = await gyaanService.toggleFavorite(id);
+        if (res.data) {
+            setTips(prev => prev.map(t => t.id === id ? { ...t, favorite: res.data!.favorite } : t));
+        }
     };
 
+    // ── meditation timer ─────────────────────────────────────────────────────
     useEffect(() => {
         let interval: ReturnType<typeof setInterval>;
         if (timerActive && timerSeconds > 0) {
@@ -71,6 +95,10 @@ const GyaanCornerScreen = () => {
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
+    // ── category colour helper ───────────────────────────────────────────────
+    const catColor = (category: string) => CATEGORIES.find(c => c.key === category)?.color ?? Colors.primary;
+    const catIcon = (category: string) => CATEGORIES.find(c => c.key === category)?.icon ?? 'book';
+
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <View style={[styles.header, { backgroundColor: colors.glassBackground, borderBottomColor: colors.border }]}>
@@ -87,7 +115,7 @@ const GyaanCornerScreen = () => {
                     <TouchableOpacity
                         key={cat.key}
                         style={[styles.categoryChip, selectedCategory === cat.key && { backgroundColor: cat.color }]}
-                        onPress={() => setSelectedCategory(cat.key)}
+                        onPress={() => onCategoryChange(cat.key)}
                     >
                         <Ionicons name={cat.icon as keyof typeof Ionicons.glyphMap} size={16} color={selectedCategory === cat.key ? Colors.white : cat.color} />
                         <Text style={[styles.categoryText, selectedCategory === cat.key && { color: Colors.white }]}>{cat.label}</Text>
@@ -95,7 +123,8 @@ const GyaanCornerScreen = () => {
                 ))}
             </ScrollView>
 
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
                 {/* Timer Card - if active */}
                 {timerActive && (
                     <Card style={styles.timerCard}>
@@ -117,55 +146,26 @@ const GyaanCornerScreen = () => {
                     </Card>
                 )}
 
-                {/* Empty state or Tips */}
-                {filteredTips.length === 0 ? (
+                {/* Loading skeleton */}
+                {loading ? (
+                    <>
+                        {[1, 2, 3, 4].map(i => (
+                            <Skeleton key={i} width={'100%'} height={90} style={{ borderRadius: 12, marginBottom: 10 }} />
+                        ))}
+                    </>
+                ) : tips.length === 0 ? (
                     <View style={styles.emptyState}>
                         <Ionicons name="book-outline" size={64} color={Colors.border} />
-                        <Text style={styles.emptyTitle}>Wellness Tips Coming Soon</Text>
-                        <Text style={styles.emptySubtitle}>Connect to get personalized wellness tips for nutrition, exercise, meditation, and ayurveda</Text>
-
-                        {/* Placeholder tips for visual */}
-                        <View style={{ width: '100%', marginTop: 24 }}>
-                            {[
-                                { cat: 'nutrition', title: 'Start Your Day Right', desc: 'A balanced breakfast sets the tone for your day', icon: 'nutrition', color: Colors.emerald500 },
-                                { cat: 'exercise', title: '30-Min Walking', desc: 'Daily walking reduces heart disease risk by 35%', icon: 'walk', color: Colors.orange500 },
-                                { cat: 'meditation', title: 'Deep Breathing', desc: '5 minutes of deep breathing reduces stress hormones', icon: 'leaf', color: Colors.purple500, timer: 5 },
-                                { cat: 'ayurveda', title: 'Warm Water & Turmeric', desc: 'Ancient remedy for immunity and digestion', icon: 'heart', color: Colors.destructive },
-                            ].map((tip, i) => (
-                                <Card key={i} style={styles.tipCard}>
-                                    <CardContent>
-                                        <View style={styles.tipRow}>
-                                            <View style={[styles.tipIcon, { backgroundColor: tip.color + '15' }]}>
-                                                <Ionicons name={tip.icon as keyof typeof Ionicons.glyphMap} size={22} color={tip.color} />
-                                            </View>
-                                            <View style={styles.tipContent}>
-                                                <Text style={styles.tipTitle}>{tip.title}</Text>
-                                                <Text style={styles.tipDesc}>{tip.desc}</Text>
-                                                <View style={styles.tipActions}>
-                                                    {tip.timer && (
-                                                        <TouchableOpacity
-                                                            style={styles.timerBtn}
-                                                            onPress={() => startTimer(`placeholder-${i}`, tip.timer!)}
-                                                        >
-                                                            <Ionicons name="play" size={14} color={Colors.purple500} />
-                                                            <Text style={styles.timerBtnText}>{tip.timer} min</Text>
-                                                        </TouchableOpacity>
-                                                    )}
-                                                </View>
-                                            </View>
-                                        </View>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </View>
+                        <Text style={styles.emptyTitle}>No Tips Found</Text>
+                        <Text style={styles.emptySubtitle}>No wellness tips available for this category yet. Pull down to refresh.</Text>
                     </View>
                 ) : (
-                    filteredTips.map((tip) => (
+                    tips.map((tip) => (
                         <Card key={tip.id} style={[styles.tipCard, tip.completed && { opacity: 0.6 }]}>
                             <CardContent>
                                 <View style={styles.tipRow}>
-                                    <View style={[styles.tipIcon, { backgroundColor: CATEGORIES.find(c => c.key === tip.category)?.color + '15' }]}>
-                                        <Ionicons name={CATEGORIES.find(c => c.key === tip.category)?.icon as keyof typeof Ionicons.glyphMap || 'book'} size={22} color={CATEGORIES.find(c => c.key === tip.category)?.color} />
+                                    <View style={[styles.tipIcon, { backgroundColor: catColor(tip.category) + '15' }]}>
+                                        <Ionicons name={(tip.icon || catIcon(tip.category)) as keyof typeof Ionicons.glyphMap} size={22} color={catColor(tip.category)} />
                                     </View>
                                     <View style={styles.tipContent}>
                                         <Text style={styles.tipTitle}>{tip.title}</Text>
