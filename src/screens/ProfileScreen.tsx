@@ -1,14 +1,13 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Colors, BorderRadius, Gradients, Shadows } from '../theme';
+import { Colors, BorderRadius, Gradients } from '../theme';
 import { useUserMode } from '../hooks/useUserMode';
 import { useTheme } from '../hooks/useTheme';
 import { userService } from '../services/api';
@@ -23,7 +22,7 @@ interface UserProfile {
 
 const ProfileScreen = () => {
     const navigation = useNavigation();
-    const { mode, setMode, parentLinkCode, generateNewLinkCode } = useUserMode();
+    const { parentLinkCode, generateNewLinkCode } = useUserMode();
     const [isEditing, setIsEditing] = useState(false);
     const [profile, setProfile] = useState<UserProfile>({
         name: '', age: '', phone: '', email: '', address: '', emergencyContact: '', bloodGroup: '',
@@ -128,7 +127,7 @@ const ProfileScreen = () => {
                                 ].map((field, i) => (
                                     <View key={i} style={styles.fieldRow}>
                                         <View style={styles.fieldIcon}>
-                                            <Ionicons name={field.icon as any} size={16} color={Colors.primary} />
+                                            <Ionicons name={field.icon as keyof typeof Ionicons.glyphMap} size={16} color={Colors.primary} />
                                         </View>
                                         <View style={styles.fieldContent}>
                                             <Text style={styles.fieldLabel}>{field.label}</Text>
@@ -148,7 +147,7 @@ const ProfileScreen = () => {
                         {settingsItems.map((item, i) => (
                             <TouchableOpacity key={i} style={styles.settingRow} onPress={item.onPress}>
                                 <View style={[styles.settingIcon, { backgroundColor: item.color + '15' }]}>
-                                    <Ionicons name={item.icon as any} size={18} color={item.color} />
+                                    <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={18} color={item.color} />
                                 </View>
                                 <Text style={styles.settingLabel}>{item.label}</Text>
                                 {item.toggle ? (

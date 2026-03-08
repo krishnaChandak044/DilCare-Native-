@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Dimensions,
 } from 'react-native';
@@ -7,10 +7,9 @@ import { useNavigation } from '@react-navigation/native';
 import { LineChart } from 'react-native-chart-kit';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Colors, Shadows, BorderRadius, Gradients } from '../theme';
+import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { healthService } from '../services/api';
 
@@ -48,7 +47,7 @@ const HealthTrackerScreen = () => {
         if (!newValue.trim()) return;
         const reading: HealthReading = {
             id: Date.now().toString(),
-            type: selectedType as any,
+            type: selectedType as HealthReading['type'],
             value: newValue,
             date: new Date().toLocaleDateString(),
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -93,7 +92,7 @@ const HealthTrackerScreen = () => {
                         <Card key={type.key} style={styles.metricCard}>
                             <CardContent style={styles.metricContent}>
                                 <View style={[styles.metricIcon, { backgroundColor: type.color + '15' }]}>
-                                    <Ionicons name={type.icon as any} size={20} color={type.color} />
+                                    <Ionicons name={type.icon} size={20} color={type.color} />
                                 </View>
                                 <Text style={styles.metricLabel}>{type.label}</Text>
                                 <Text style={styles.metricValue}>--</Text>
@@ -156,7 +155,7 @@ const HealthTrackerScreen = () => {
                                 <CardContent>
                                     <View style={styles.readingRow}>
                                         <View style={[styles.readingIcon, { backgroundColor: typeInfo?.color + '15' }]}>
-                                            <Ionicons name={typeInfo?.icon as any || 'pulse'} size={20} color={typeInfo?.color} />
+                                            <Ionicons name={typeInfo?.icon || 'pulse'} size={20} color={typeInfo?.color} />
                                         </View>
                                         <View style={styles.readingInfo}>
                                             <Text style={styles.readingType}>{typeInfo?.label}</Text>
@@ -185,7 +184,7 @@ const HealthTrackerScreen = () => {
                             style={[styles.typeOption, selectedType === type.key && { borderColor: type.color, backgroundColor: type.color + '10' }]}
                             onPress={() => setSelectedType(type.key)}
                         >
-                            <Ionicons name={type.icon as any} size={20} color={type.color} />
+                            <Ionicons name={type.icon} size={20} color={type.color} />
                             <Text style={[styles.typeLabel, selectedType === type.key && { color: type.color }]}>{type.label}</Text>
                         </TouchableOpacity>
                     ))}

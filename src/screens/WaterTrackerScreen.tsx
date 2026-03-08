@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
-import { Colors, BorderRadius, Gradients } from '../theme';
+import { Colors, BorderRadius } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { waterService } from '../services/api';
 
@@ -24,7 +23,7 @@ const WaterTrackerScreen = () => {
     const { colors } = useTheme();
     const navigation = useNavigation();
     const [glasses, setGlasses] = useState(0);
-    const [streak, setStreak] = useState(0);
+    const [_streak, _setStreak] = useState(0);
     const [remindersEnabled, setRemindersEnabled] = useState(false);
 
     const progressPercent = Math.min((glasses / DAILY_GOAL) * 100, 100);
@@ -151,7 +150,7 @@ const WaterTrackerScreen = () => {
                         <CardContent>
                             <View style={styles.benefitRow}>
                                 <View style={[styles.benefitIcon, { backgroundColor: benefit.color + '15' }]}>
-                                    <Ionicons name={benefit.icon as any} size={20} color={benefit.color} />
+                                    <Ionicons name={benefit.icon as keyof typeof Ionicons.glyphMap} size={20} color={benefit.color} />
                                 </View>
                                 <View style={{ flex: 1, marginLeft: 12 }}>
                                     <Text style={styles.benefitTitle}>{benefit.title}</Text>

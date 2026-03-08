@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform,
 } from 'react-native';
@@ -7,9 +7,8 @@ import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { ProgressBar } from '../components/ui/ProgressBar';
 import { Input } from '../components/ui/Input';
-import { Colors, BorderRadius, Gradients, Shadows } from '../theme';
+import { Colors, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { bmiService } from '../services/api';
 

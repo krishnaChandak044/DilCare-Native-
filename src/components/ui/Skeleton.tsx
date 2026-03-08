@@ -46,7 +46,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
         <Animated.View
             style={[
                 {
-                    width: width as any,
+                    width: width as number | `${number}%`,
                     height,
                     borderRadius,
                     backgroundColor: Colors.border,

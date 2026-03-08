@@ -9,7 +9,7 @@ import {
     ViewStyle,
     StyleProp,
 } from 'react-native';
-import { Colors, Shadows, BorderRadius } from '../../theme';
+import { Shadows, BorderRadius } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 
 interface CardProps {

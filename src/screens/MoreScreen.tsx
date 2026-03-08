@@ -2,14 +2,13 @@
  * More Screen — Premium redesign as a services hub
  * Proper standalone component (not inline in navigator)
  */
-import React from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Dimensions,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Card, CardContent } from '../components/ui/Card';
 import { Colors, Shadows, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 
@@ -101,7 +100,7 @@ const ALL_SERVICES: Feature[] = [
     },
 ];
 
-const SETTINGS_SERVICES: Feature[] = [
+const _SETTINGS_SERVICES: Feature[] = [
     {
         name: 'Profile',
         icon: 'person',
@@ -114,13 +113,13 @@ const SETTINGS_SERVICES: Feature[] = [
 
 const MoreScreen = () => {
     const { colors } = useTheme();
-    const navigation = useNavigation<any>();
+    const navigation = useNavigation<NativeStackNavigationProp<Record<string, undefined>>>();
 
     const renderServiceIcon = (feature: Feature, size: number) => {
         if (feature.isMaterial) {
-            return <MaterialCommunityIcons name={feature.icon as any} size={size} color={feature.color} />;
+            return <MaterialCommunityIcons name={feature.icon as keyof typeof MaterialCommunityIcons.glyphMap} size={size} color={feature.color} />;
         }
-        return <Ionicons name={feature.icon as any} size={size} color={feature.color} />;
+        return <Ionicons name={feature.icon as keyof typeof Ionicons.glyphMap} size={size} color={feature.color} />;
     };
 
     return (
@@ -164,7 +163,7 @@ const MoreScreen = () => {
                                 style={styles.featuredGradient}
                             >
                                 <View style={styles.featuredIconBg}>
-                                    <Ionicons name={feature.icon as any} size={24} color={Colors.white} />
+                                    <Ionicons name={feature.icon as keyof typeof Ionicons.glyphMap} size={24} color={Colors.white} />
                                 </View>
                                 <Text style={styles.featuredName}>{feature.name}</Text>
                                 <Text style={styles.featuredDesc}>{feature.description}</Text>

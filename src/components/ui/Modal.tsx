@@ -10,7 +10,7 @@ import {
     Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, BorderRadius, Typography, Shadows } from '../../theme';
+import { BorderRadius, Typography, Shadows } from '../../theme';
 import { useTheme } from '../../hooks/useTheme';
 
 interface ModalProps {

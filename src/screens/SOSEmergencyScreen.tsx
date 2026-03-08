@@ -8,7 +8,7 @@ import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Colors, BorderRadius, Gradients, Shadows } from '../theme';
+import { Colors, Gradients, Shadows } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { sosService } from '../services/api';
 import * as Haptics from 'expo-haptics';
@@ -32,7 +32,7 @@ const SOSEmergencyScreen = () => {
     const [newRelation, setNewRelation] = useState('');
     const [isHolding, setIsHolding] = useState(false);
     const [holdProgress, setHoldProgress] = useState(0);
-    const holdTimer = useRef<any>(null);
+    const holdTimer = useRef<ReturnType<typeof setInterval>>(null);
     const pulseAnim = useRef(new Animated.Value(1)).current;
 
     // Pulsing animation for SOS button
@@ -143,7 +143,7 @@ const SOSEmergencyScreen = () => {
                             <Card style={styles.emergencyCard}>
                                 <CardContent style={{ alignItems: 'center', paddingVertical: 14 }}>
                                     <View style={[styles.emergencyIcon, { backgroundColor: num.color + '15' }]}>
-                                        <Ionicons name={num.icon as any} size={22} color={num.color} />
+                                        <Ionicons name={num.icon as keyof typeof Ionicons.glyphMap} size={22} color={num.color} />
                                     </View>
                                     <Text style={styles.emergencyName}>{num.name}</Text>
                                     <Text style={[styles.emergencyNumber, { color: num.color }]}>{num.number}</Text>

@@ -6,11 +6,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
     View, Text, StyleSheet, Dimensions, TouchableOpacity,
-    ScrollView, Platform, Animated, Easing,
+    ScrollView, Platform, Animated, Easing, NativeSyntheticEvent, NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, BorderRadius, Shadows } from '../theme';
+import { Colors, Shadows } from '../theme';
 import { useTranslation } from 'react-i18next';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -272,7 +272,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
         }
     };
 
-    const handleScroll = (event: any) => {
+    const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
         if (index !== currentIndex && index >= 0 && index < SLIDES.length) {
             setCurrentIndex(index);

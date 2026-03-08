@@ -1,14 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
-import { Colors, BorderRadius, Gradients, Shadows } from '../theme';
+import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
-import { communityService } from '../services/api';
 
 const CommunityScreen = () => {
     const { colors } = useTheme();
@@ -37,9 +35,9 @@ const CommunityScreen = () => {
                     <TouchableOpacity
                         key={tab.key}
                         style={[styles.tab, activeTab === tab.key && styles.tabActive]}
-                        onPress={() => setActiveTab(tab.key as any)}
+                        onPress={() => setActiveTab(tab.key as 'leaderboard' | 'groups' | 'challenges' | 'notifications')}
                     >
-                        <Ionicons name={tab.icon as any} size={16} color={activeTab === tab.key ? Colors.white : Colors.mutedForeground} />
+                        <Ionicons name={tab.icon as keyof typeof Ionicons.glyphMap} size={16} color={activeTab === tab.key ? Colors.white : Colors.mutedForeground} />
                         <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
                     </TouchableOpacity>
                 ))}
@@ -54,7 +52,7 @@ const CommunityScreen = () => {
 
                         {/* Placeholder leaderboard visual */}
                         <View style={{ width: '100%', marginTop: 24 }}>
-                            {['1st Place', '2nd Place', '3rd Place'].map((place, i) => (
+                            {['1st Place', '2nd Place', '3rd Place'].map((_place, i) => (
                                 <Card key={i} style={[styles.leaderCard, i === 0 && styles.leaderCardGold]}>
                                     <CardContent>
                                         <View style={styles.leaderRow}>
@@ -105,7 +103,7 @@ const CommunityScreen = () => {
                                     <CardContent>
                                         <View style={styles.challengeRow}>
                                             <View style={[styles.challengeIcon, { backgroundColor: challenge.color + '15' }]}>
-                                                <Ionicons name={challenge.icon as any} size={22} color={challenge.color} />
+                                                <Ionicons name={challenge.icon as keyof typeof Ionicons.glyphMap} size={22} color={challenge.color} />
                                             </View>
                                             <View style={styles.challengeContent}>
                                                 <Text style={styles.challengeTitle}>{challenge.title}</Text>

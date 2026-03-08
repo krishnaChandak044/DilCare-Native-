@@ -1,10 +1,9 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import {
     View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { Card, CardContent } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Colors, BorderRadius, Gradients, Shadows } from '../theme';
 import { useTheme } from '../hooks/useTheme';

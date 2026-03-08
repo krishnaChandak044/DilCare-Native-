@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
-    View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, FlatList, Alert,
+    View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -9,7 +9,7 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Colors, Shadows, BorderRadius, Gradients, Typography } from '../theme';
+import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { medicineService } from '../services/api';
 
@@ -37,7 +37,7 @@ const MedicineReminderScreen = () => {
     const [medicines, setMedicines] = useState<Medicine[]>([]);
     const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
     const [showAddMedicine, setShowAddMedicine] = useState(false);
-    const [showAddPrescription, setShowAddPrescription] = useState(false);
+    const [_showAddPrescription, _setShowAddPrescription] = useState(false);
     const [activeTab, setActiveTab] = useState<'today' | 'prescriptions'>('today');
 
     // Form state

@@ -1,4 +1,3 @@
-import React from 'react';
 import {
     View,
     Text,
@@ -8,12 +7,13 @@ import {
     Platform,
     Dimensions,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Colors, Shadows, BorderRadius, Gradients, Typography } from '../theme';
+import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -22,7 +22,7 @@ const GRID_GAP = 12;
 const ACTION_CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GRID_GAP) / 2;
 
 const HomeScreen = () => {
-    const navigation = useNavigation<any>();
+    const navigation = useNavigation<NativeStackNavigationProp<Record<string, undefined>>>();
     const { colors } = useTheme();
     const currentHour = new Date().getHours();
 
@@ -32,7 +32,7 @@ const HomeScreen = () => {
         return 'Good Evening';
     };
 
-    const getGreetingIcon = (): { name: any; color: string } => {
+    const getGreetingIcon = (): { name: keyof typeof Ionicons.glyphMap; color: string } => {
         if (currentHour < 12) return { name: 'sunny', color: Colors.amber500 };
         if (currentHour < 17) return { name: 'sunny', color: Colors.orange500 };
         return { name: 'moon', color: Colors.blue500 };

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform,
 } from 'react-native';
@@ -6,9 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { ProgressBar } from '../components/ui/ProgressBar';
-import { Colors, BorderRadius, Gradients } from '../theme';
+import { Colors, BorderRadius } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { gyaanService } from '../services/api';
 
@@ -52,7 +51,7 @@ const GyaanCornerScreen = () => {
     };
 
     useEffect(() => {
-        let interval: any;
+        let interval: ReturnType<typeof setInterval>;
         if (timerActive && timerSeconds > 0) {
             interval = setInterval(() => setTimerSeconds(prev => prev - 1), 1000);
         } else if (timerSeconds === 0 && timerActive) {
@@ -90,7 +89,7 @@ const GyaanCornerScreen = () => {
                         style={[styles.categoryChip, selectedCategory === cat.key && { backgroundColor: cat.color }]}
                         onPress={() => setSelectedCategory(cat.key)}
                     >
-                        <Ionicons name={cat.icon as any} size={16} color={selectedCategory === cat.key ? Colors.white : cat.color} />
+                        <Ionicons name={cat.icon as keyof typeof Ionicons.glyphMap} size={16} color={selectedCategory === cat.key ? Colors.white : cat.color} />
                         <Text style={[styles.categoryText, selectedCategory === cat.key && { color: Colors.white }]}>{cat.label}</Text>
                     </TouchableOpacity>
                 ))}
@@ -137,7 +136,7 @@ const GyaanCornerScreen = () => {
                                     <CardContent>
                                         <View style={styles.tipRow}>
                                             <View style={[styles.tipIcon, { backgroundColor: tip.color + '15' }]}>
-                                                <Ionicons name={tip.icon as any} size={22} color={tip.color} />
+                                                <Ionicons name={tip.icon as keyof typeof Ionicons.glyphMap} size={22} color={tip.color} />
                                             </View>
                                             <View style={styles.tipContent}>
                                                 <Text style={styles.tipTitle}>{tip.title}</Text>
@@ -166,7 +165,7 @@ const GyaanCornerScreen = () => {
                             <CardContent>
                                 <View style={styles.tipRow}>
                                     <View style={[styles.tipIcon, { backgroundColor: CATEGORIES.find(c => c.key === tip.category)?.color + '15' }]}>
-                                        <Ionicons name={CATEGORIES.find(c => c.key === tip.category)?.icon as any || 'book'} size={22} color={CATEGORIES.find(c => c.key === tip.category)?.color} />
+                                        <Ionicons name={CATEGORIES.find(c => c.key === tip.category)?.icon as keyof typeof Ionicons.glyphMap || 'book'} size={22} color={CATEGORIES.find(c => c.key === tip.category)?.color} />
                                     </View>
                                     <View style={styles.tipContent}>
                                         <Text style={styles.tipTitle}>{tip.title}</Text>

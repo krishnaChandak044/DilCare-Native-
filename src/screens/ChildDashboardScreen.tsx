@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Colors, BorderRadius, Gradients, Shadows } from '../theme';
+import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
 import { familyService } from '../services/api';
 
@@ -48,14 +47,14 @@ const ChildDashboardScreen = () => {
         setShowLinkModal(false);
     };
 
-    const handleUnlinkParent = async (parentCode: string) => {
+    const handleUnlinkParent = (parentCode: string) => {
         Alert.alert('Unlink Parent', 'Are you sure you want to unlink this parent?', [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Unlink', style: 'destructive',
-                onPress: async () => {
+                onPress: () => {
                     setLinkedParents(prev => prev.filter(p => p.linkCode !== parentCode));
-                    await familyService.unlinkParent(parentCode);
+                    familyService.unlinkParent(parentCode);
                 },
             },
         ]);

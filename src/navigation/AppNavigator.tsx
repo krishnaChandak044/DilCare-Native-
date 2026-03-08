@@ -4,13 +4,12 @@
  * - Custom tab bar with proper safe area handling
  * - Type-safe icon mapping
  */
-import React from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Shadows, BorderRadius } from '../theme';
+import { Colors, Shadows } from '../theme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../hooks/useTheme';
 
@@ -41,12 +40,12 @@ const TAB_CONFIG: Record<string, { icon: string; label: string }> = {
     More: { icon: 'grid', label: 'More' },
 };
 
-const CustomTabBar = ({ state, descriptors, navigation }: any) => {
+const CustomTabBar = ({ state, navigation }: BottomTabBarProps) => {
     const { colors } = useTheme();
     return (
         <View style={[tabStyles.container, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
             <View style={tabStyles.tabBar}>
-                {state.routes.map((route: any, index: number) => {
+                {state.routes.map((route, index: number) => {
                     const isFocused = state.index === index;
                     const config = TAB_CONFIG[route.name] || { icon: 'apps', label: route.name };
 
@@ -76,11 +75,11 @@ const CustomTabBar = ({ state, descriptors, navigation }: any) => {
                                     colors={['#3B82F6', '#2563EB']}
                                     style={tabStyles.iconGradient}
                                 >
-                                    <Ionicons name={config.icon as any} size={20} color={Colors.white} />
+                                    <Ionicons name={config.icon as keyof typeof Ionicons.glyphMap} size={20} color={Colors.white} />
                                 </LinearGradient>
                             ) : (
                                 <View style={tabStyles.iconContainer}>
-                                    <Ionicons name={(config.icon + '-outline') as any} size={20} color={colors.mutedForeground} />
+                                    <Ionicons name={(config.icon + '-outline') as keyof typeof Ionicons.glyphMap} size={20} color={colors.mutedForeground} />
                                 </View>
                             )}
                             <Text
