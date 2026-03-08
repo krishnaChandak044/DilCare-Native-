@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-    View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Dimensions,
+    View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Dimensions, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -22,9 +22,17 @@ interface HealthReading {
     id: string;
     type: 'bp' | 'sugar' | 'weight' | 'heartRate';
     value: string;
+    unit?: string;
     date: string;
     time: string;
     status: 'normal' | 'warning' | 'danger';
+}
+
+interface HealthSummaryItem {
+    type: string;
+    value: string;
+    unit: string;
+    status: string;
 }
 
 const HEALTH_TYPES = [
@@ -38,25 +46,92 @@ const HealthTrackerScreen = () => {
     const { colors } = useTheme();
     const navigation = useNavigation();
     const [readings, setReadings] = useState<HealthReading[]>([]);
+    const [summary, setSummary] = useState<HealthSummaryItem[]>([]);
     const [showAddReading, setShowAddReading] = useState(false);
     const [selectedType, setSelectedType] = useState('bp');
     const [newValue, setNewValue] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [chartData, setChartData] = useState({
+        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        datasets: [{ data: [0, 0, 0, 0, 0, 0, 0], color: () => Colors.primary, strokeWidth: 2 }],
+    });
     const screenWidth = Dimensions.get('window').width;
+
+    // Fetch data on mount
+    const fetchData = useCallback(async () => {
+        try {
+            // Fetch readings
+            const readingsResp = await healthService.getHealthReadings({ limit: 20 });
+            if (readingsResp.data) {
+                setReadings(readingsResp.data as unknown as HealthReading[]);
+            }
+
+            // Fetch summary
+            const summaryResp = await healthService.getHealthSummary();
+            if (summaryResp.data) {
+                setSummary(summaryResp.data as unknown as HealthSummaryItem[]);
+            }
+
+            // Fetch trends for chart
+            const trendsResp = await healthService.getHealthTrends('bp', 'week');
+            if (trendsResp.data) {
+                const trendData = trendsResp.data;
+                setChartData({
+                    labels: trendData.labels || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        data: (trendData.data || []).map(v => v ?? 0),
+                        color: () => Colors.primary,
+                        strokeWidth: 2,
+                    }],
+                });
+            }
+        } catch (error) {
+            console.error('Failed to fetch health data:', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await fetchData();
+        setRefreshing(false);
+    }, [fetchData]);
 
     const addReading = async () => {
         if (!newValue.trim()) return;
-        const reading: HealthReading = {
-            id: Date.now().toString(),
-            type: selectedType as HealthReading['type'],
-            value: newValue,
-            date: new Date().toLocaleDateString(),
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            status: 'normal',
-        };
-        setReadings(prev => [reading, ...prev]);
+        setIsLoading(true);
+        
+        try {
+            const resp = await healthService.addHealthReading({
+                type: selectedType as 'bp' | 'sugar' | 'weight' | 'heartRate',
+                value: newValue.trim(),
+            });
+            
+            if (resp.data) {
+                // Add to local state
+                setReadings(prev => [resp.data as unknown as HealthReading, ...prev]);
+                // Refresh summary
+                fetchData();
+            } else if (resp.error) {
+                console.error('Failed to add reading:', resp.error);
+            }
+        } catch (error) {
+            console.error('Failed to add reading:', error);
+        }
+        
         setNewValue('');
         setShowAddReading(false);
-        await healthService.addHealthReading(reading);
+        setIsLoading(false);
+    };
+
+    // Get latest value for a type from summary
+    const getLatestValue = (type: string) => {
+        const item = summary.find(s => s.type === type);
+        return item?.value || '--';
     };
 
     const getStatusColor = (status: string) => {
@@ -66,11 +141,6 @@ const HealthTrackerScreen = () => {
             case 'danger': return Colors.destructive;
             default: return Colors.mutedForeground;
         }
-    };
-
-    const chartData = {
-        labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-        datasets: [{ data: [0, 0, 0, 0, 0, 0, 0], color: () => Colors.primary, strokeWidth: 2 }],
     };
 
     return (
@@ -85,7 +155,14 @@ const HealthTrackerScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                style={styles.scrollView} 
+                contentContainerStyle={styles.scrollContent} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+                }
+            >
                 {/* Metric Cards */}
                 <View style={styles.metricsGrid}>
                     {HEALTH_TYPES.map((type) => (
@@ -95,7 +172,7 @@ const HealthTrackerScreen = () => {
                                     <Ionicons name={type.icon} size={20} color={type.color} />
                                 </View>
                                 <Text style={styles.metricLabel}>{type.label}</Text>
-                                <Text style={styles.metricValue}>--</Text>
+                                <Text style={styles.metricValue}>{getLatestValue(type.key)}</Text>
                                 <Text style={styles.metricUnit}>{type.unit}</Text>
                             </CardContent>
                         </Card>
@@ -189,9 +266,21 @@ const HealthTrackerScreen = () => {
                         </TouchableOpacity>
                     ))}
                 </View>
-                <Input label="Value" placeholder={`Enter value`} value={newValue} onChangeText={setNewValue} keyboardType="numeric" />
-                <Button variant="gradient" gradientColors={Gradients.primary} onPress={addReading} style={{ marginTop: 8 }}>
-                    Save Reading
+                <Input 
+                    label="Value" 
+                    placeholder={selectedType === 'bp' ? 'e.g., 120/80' : `Enter ${HEALTH_TYPES.find(t => t.key === selectedType)?.label || 'value'}`}
+                    value={newValue} 
+                    onChangeText={setNewValue} 
+                    keyboardType={selectedType === 'bp' ? 'default' : 'numeric'} 
+                />
+                <Button 
+                    variant="gradient" 
+                    gradientColors={Gradients.primary} 
+                    onPress={addReading} 
+                    style={{ marginTop: 8 }}
+                    disabled={isLoading || !newValue.trim()}
+                >
+                    {isLoading ? 'Saving...' : 'Save Reading'}
                 </Button>
             </Modal>
         </View>

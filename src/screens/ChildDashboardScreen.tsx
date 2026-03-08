@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert, Dimensions } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert, Dimensions, RefreshControl, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Card, CardContent } from '../components/ui/Card';
@@ -8,7 +8,7 @@ import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { Colors, BorderRadius, Gradients } from '../theme';
 import { useTheme } from '../hooks/useTheme';
-import { familyService } from '../services/api';
+import { familyService, FamilyLink, ParentHealthSummary } from '../services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const H_PAD = 20;
@@ -16,16 +16,22 @@ const HEALTH_GAP = 8;
 const HEALTH_ITEM_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - 40 - HEALTH_GAP) / 2;
 
 interface LinkedParent {
-    id: string; name: string; linkCode: string; relationship: string;
+    id: string;
+    name: string;
+    linkCode: string;
+    relationship: string;
     healthData: {
         bloodPressure?: { systolic: number; diastolic: number };
         bloodSugar?: number;
-        stepsToday?: number;
         waterIntake?: number;
+        waterGoal?: number;
         medicinesTaken?: number;
         medicinesTotal?: number;
+        heartRate?: number;
     };
     alerts: Array<{ type: 'warning' | 'danger' | 'info'; message: string }>;
+    overallStatus: 'good' | 'warning' | 'danger';
+    lastActivity?: string;
 }
 
 const ChildDashboardScreen = () => {
@@ -34,36 +40,177 @@ const ChildDashboardScreen = () => {
     const [linkedParents, setLinkedParents] = useState<LinkedParent[]>([]);
     const [showLinkModal, setShowLinkModal] = useState(false);
     const [linkCode, setLinkCode] = useState('');
+    const [relationship, setRelationship] = useState('other');
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [linking, setLinking] = useState(false);
+
+    // Fetch linked parents and their health data
+    const fetchLinkedParents = useCallback(async () => {
+        try {
+            const linksRes = await familyService.getLinkedParents();
+            
+            if (!linksRes.data) {
+                console.error('Failed to fetch linked parents:', linksRes.error);
+                return;
+            }
+            
+            const links = linksRes.data;
+            
+            // Fetch health data for each parent
+            const parentsWithHealth: LinkedParent[] = await Promise.all(
+                links.map(async (link: FamilyLink) => {
+                    const healthRes = await familyService.getParentHealth(link.parent_id);
+                    return transformToLinkedParent(link, healthRes.data);
+                })
+            );
+            
+            setLinkedParents(parentsWithHealth);
+        } catch (error) {
+            console.error('Failed to fetch linked parents:', error);
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    // Transform API response to component format
+    const transformToLinkedParent = (link: FamilyLink, health: ParentHealthSummary | null): LinkedParent => {
+        const alerts: LinkedParent['alerts'] = [];
+        
+        if (health) {
+            if (health.bp_status === 'danger') {
+                alerts.push({ type: 'danger', message: 'Blood pressure is critical!' });
+            } else if (health.bp_status === 'warning') {
+                alerts.push({ type: 'warning', message: 'Blood pressure needs attention' });
+            }
+            
+            if (health.sugar_status === 'danger') {
+                alerts.push({ type: 'danger', message: 'Blood sugar is critical!' });
+            } else if (health.sugar_status === 'warning') {
+                alerts.push({ type: 'warning', message: 'Blood sugar needs attention' });
+            }
+            
+            if (health.medicine_adherence_percent < 50 && health.medicines_today_total > 0) {
+                alerts.push({ type: 'warning', message: 'Medicines not taken on time' });
+            }
+        }
+        
+        // Parse BP values
+        let bpData: { systolic: number; diastolic: number } | undefined;
+        if (health?.latest_bp) {
+            const parts = health.latest_bp.split('/');
+            if (parts.length === 2) {
+                bpData = {
+                    systolic: parseInt(parts[0], 10),
+                    diastolic: parseInt(parts[1], 10),
+                };
+            }
+        }
+        
+        return {
+            id: link.parent_id,
+            name: link.parent_info.full_name || link.parent_info.email,
+            linkCode: link.parent_id,
+            relationship: link.relationship_display,
+            healthData: {
+                bloodPressure: bpData,
+                bloodSugar: health?.latest_sugar ? parseFloat(health.latest_sugar) : undefined,
+                waterIntake: health?.water_glasses_today,
+                waterGoal: health?.water_goal_today,
+                medicinesTaken: health?.medicines_today_taken,
+                medicinesTotal: health?.medicines_today_total,
+                heartRate: health?.latest_heart_rate ?? undefined,
+            },
+            alerts,
+            overallStatus: health?.overall_status || 'good',
+            lastActivity: health?.last_activity ?? undefined,
+        };
+    };
+
+    useEffect(() => {
+        fetchLinkedParents();
+    }, [fetchLinkedParents]);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchLinkedParents();
+    };
 
     const handleLinkParent = async () => {
         if (!linkCode.trim() || linkCode.length !== 6) {
             Alert.alert('Invalid Code', 'Please enter a 6-character link code');
             return;
         }
-        // API call placeholder
-        await familyService.linkParent(linkCode);
-        Alert.alert('Linking...', 'Parent linking will work after backend integration');
-        setLinkCode('');
-        setShowLinkModal(false);
+        
+        setLinking(true);
+        try {
+            const linkRes = await familyService.linkParent(linkCode, relationship);
+            
+            if (!linkRes.data) {
+                Alert.alert('Error', linkRes.error || 'Failed to link parent. Please check the code and try again.');
+                return;
+            }
+            
+            const link = linkRes.data;
+            
+            // Fetch health for the new parent
+            const healthRes = await familyService.getParentHealth(link.parent_id);
+            const newParent = transformToLinkedParent(link, healthRes.data);
+            setLinkedParents(prev => [...prev, newParent]);
+            
+            Alert.alert('Success', 'Parent linked successfully!');
+            setLinkCode('');
+            setRelationship('other');
+            setShowLinkModal(false);
+        } catch (error: any) {
+            Alert.alert('Error', 'Failed to link parent. Please check the code and try again.');
+        } finally {
+            setLinking(false);
+        }
     };
 
-    const handleUnlinkParent = (parentCode: string) => {
-        Alert.alert('Unlink Parent', 'Are you sure you want to unlink this parent?', [
+    const handleUnlinkParent = (parentId: string, parentName: string) => {
+        Alert.alert('Unlink Parent', `Are you sure you want to unlink ${parentName}?`, [
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Unlink', style: 'destructive',
-                onPress: () => {
-                    setLinkedParents(prev => prev.filter(p => p.linkCode !== parentCode));
-                    familyService.unlinkParent(parentCode);
+                onPress: async () => {
+                    try {
+                        const res = await familyService.unlinkParent(parentId);
+                        if (res.data) {
+                            setLinkedParents(prev => prev.filter(p => p.id !== parentId));
+                        } else {
+                            Alert.alert('Error', res.error || 'Failed to unlink parent');
+                        }
+                    } catch (error) {
+                        Alert.alert('Error', 'Failed to unlink parent');
+                    }
                 },
             },
         ]);
     };
 
     const getRelationEmoji = (rel: string) => {
-        const map: Record<string, string> = { father: '👨', mother: '👩', grandfather: '👴', grandmother: '👵' };
-        return map[rel.toLowerCase()] || '👤';
+        const map: Record<string, string> = { father: '👨', Father: '👨', mother: '👩', Mother: '👩', grandfather: '👴', Grandfather: '👴', grandmother: '👵', Grandmother: '👵' };
+        return map[rel] || '👤';
     };
+
+    const getStatusColor = (status: 'good' | 'warning' | 'danger') => {
+        switch (status) {
+            case 'danger': return Colors.destructive;
+            case 'warning': return Colors.warning;
+            default: return Colors.success;
+        }
+    };
+
+    if (loading) {
+        return (
+            <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+            </View>
+        );
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
