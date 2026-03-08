@@ -1123,19 +1123,52 @@ export const communityService = {
         apiCall<{ unread_count: number }>('/community/notifications/unread-count/'),
 };
 
-interface BMIRecord {
+export interface BMIRecord {
     id: string;
     weight: number;
     height: number;
     bmi: number;
-    date: string;
     category: string;
+    date: string;         // ISO: YYYY-MM-DD (from backend)
+    notes: string;
+    created_at: string;
+}
+
+export interface CreateBMIRecord {
+    weight: number;
+    height: number;
+    date: string;         // ISO: YYYY-MM-DD
+    notes?: string;
+}
+
+export interface BMIStats {
+    latest_bmi: number | null;
+    latest_category: string | null;
+    average_bmi: number | null;
+    total_records: number;
+    trend: 'up' | 'down' | 'stable' | null;
 }
 
 // ============ BMI Service ============
 export const bmiService = {
-    getBMIHistory: () => placeholder('/bmi/history'),
-    saveBMIRecord: (record: BMIRecord) => placeholder('/bmi'),
+    /** List all BMI records for the authenticated user (newest first). */
+    getBMIHistory: () =>
+        apiCall<BMIRecord[]>('/bmi/'),
+
+    /** Save a new BMI record. Backend computes bmi & category. */
+    saveBMIRecord: (record: CreateBMIRecord) =>
+        apiCall<BMIRecord>('/bmi/', {
+            method: 'POST',
+            body: JSON.stringify(record),
+        }),
+
+    /** Delete a specific BMI record by id. */
+    deleteBMIRecord: (id: string) =>
+        apiCall<void>(`/bmi/${id}/`, { method: 'DELETE' }),
+
+    /** Get aggregate stats: latest bmi, average, trend, total records. */
+    getStats: () =>
+        apiCall<BMIStats>('/bmi/stats/'),
 };
 
 // ============ Gyaan/Wellness Service ============
