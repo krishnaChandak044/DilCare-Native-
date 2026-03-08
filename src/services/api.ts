@@ -261,104 +261,640 @@ export const userService = {
 };
 
 // ════════════════════════════════════════════════════════════════════
-// SERVICES BELOW ARE PLACEHOLDERS — will be connected in future phases
+// HEALTH SERVICE (LIVE ✅)
 // ════════════════════════════════════════════════════════════════════
 
 interface HealthReading {
     id: string;
-    type: string;
+    type: 'bp' | 'sugar' | 'weight' | 'heartRate';
     value: string;
+    unit: string;
+    status: 'normal' | 'warning' | 'danger';
     date: string;
     time: string;
-    status: string;
+    notes?: string;
+    recorded_at: string;
+    created_at: string;
 }
 
-// ============ Health Service ============
+interface HealthReadingCreate {
+    type: 'bp' | 'sugar' | 'weight' | 'heartRate';
+    value: string;
+    notes?: string;
+    recorded_at?: string;
+}
+
+interface HealthSummary {
+    type: string;
+    value: string;
+    unit: string;
+    status: string;
+    recorded_at: string | null;
+    date: string | null;
+    time: string | null;
+}
+
+interface HealthTrends {
+    labels: string[];
+    data: (number | null)[];
+    reading_type: string;
+}
+
+interface HealthGoal {
+    id: string;
+    type: string;
+    min_value?: number;
+    max_value?: number;
+    target_value?: number;
+}
+
 export const healthService = {
-    getHealthReadings: () => placeholder('/health/readings'),
-    addHealthReading: (reading: HealthReading) => placeholder('/health/readings'),
-    getHealthSummary: () => placeholder('/health/summary'),
+    // List health readings with optional filters
+    getHealthReadings: (params?: { type?: string; start_date?: string; end_date?: string; limit?: number }) => {
+        let endpoint = '/health/readings/';
+        if (params) {
+            const queryParams = new URLSearchParams();
+            if (params.type) queryParams.append('type', params.type);
+            if (params.start_date) queryParams.append('start_date', params.start_date);
+            if (params.end_date) queryParams.append('end_date', params.end_date);
+            if (params.limit) queryParams.append('limit', params.limit.toString());
+            const queryString = queryParams.toString();
+            if (queryString) endpoint += `?${queryString}`;
+        }
+        return apiCall<HealthReading[]>(endpoint);
+    },
+
+    // Add a new health reading
+    addHealthReading: (reading: HealthReadingCreate) =>
+        apiCall<HealthReading>('/health/readings/', { method: 'POST', body: reading as unknown as Record<string, unknown> }),
+
+    // Get a specific reading
+    getHealthReading: (id: string) => apiCall<HealthReading>(`/health/readings/${id}/`),
+
+    // Delete a reading (soft delete)
+    deleteHealthReading: (id: string) => apiCall<void>(`/health/readings/${id}/`, { method: 'DELETE' }),
+
+    // Get health summary (latest reading of each type)
+    getHealthSummary: () => apiCall<HealthSummary[]>('/health/summary/'),
+
+    // Get trends for charts
+    getHealthTrends: (type?: string, period?: 'week' | 'month') => {
+        let endpoint = '/health/trends/';
+        const queryParams = new URLSearchParams();
+        if (type) queryParams.append('type', type);
+        if (period) queryParams.append('period', period);
+        const queryString = queryParams.toString();
+        if (queryString) endpoint += `?${queryString}`;
+        return apiCall<HealthTrends>(endpoint);
+    },
+
+    // Health goals
+    getHealthGoals: () => apiCall<HealthGoal[]>('/health/goals/'),
+    setHealthGoal: (goal: Omit<HealthGoal, 'id'>) =>
+        apiCall<HealthGoal>('/health/goals/', { method: 'POST', body: goal as unknown as Record<string, unknown> }),
 };
+
+// ════════════════════════════════════════════════════════════════════
+// MEDICINE SERVICE — Connected to /api/v1/medicine/
+// ════════════════════════════════════════════════════════════════════
 
 interface Medicine {
     id: string;
     name: string;
     dosage: string;
     frequency: string;
+    instructions: string;
+    schedule_times: string;
+    time_list: string[];
+    start_date: string | null;
+    end_date: string | null;
+    is_active: boolean;
+    reminder_enabled: boolean;
+    reminder_minutes_before: number;
+    today_status: {
+        total: number;
+        taken: number;
+        missed: number;
+        pending: number;
+        all_taken: boolean;
+    };
+    created_at: string;
+    updated_at: string;
+}
+
+interface MedicineCreate {
+    name: string;
+    dosage?: string;
+    frequency?: string;
+    instructions?: string;
+    schedule_times?: string;
+    start_date?: string;
+    end_date?: string;
+    reminder_enabled?: boolean;
+    reminder_minutes_before?: number;
+}
+
+interface TodayMedicine {
+    id: string;
+    name: string;
+    dosage: string;
+    frequency: string;
     time: string;
     taken: boolean;
+    missed: boolean;
+    intake_id: string | null;
+}
+
+interface MedicineIntake {
+    id: string;
+    medicine: string;
+    medicine_name: string;
+    medicine_dosage: string;
+    scheduled_date: string;
+    scheduled_time: string;
+    status: 'pending' | 'taken' | 'missed' | 'skipped';
+    taken_at: string | null;
+    notes: string;
+    created_at: string;
+}
+
+interface MedicineSummary {
+    total_medicines: number;
+    active_medicines: number;
+    today_total: number;
+    today_taken: number;
+    today_missed: number;
+    today_pending: number;
+    adherence_rate_7d: number;
+    adherence_rate_30d: number;
 }
 
 interface Prescription {
     id: string;
     name: string;
-    doctorName?: string;
-    date?: string;
+    doctor_name: string;
+    hospital_name: string;
+    prescription_date: string | null;
+    file: string | null;
+    file_type: 'image' | 'pdf' | 'other';
+    file_url: string;
+    file_size: number | null;
+    notes: string;
+    created_at: string;
+    updated_at: string;
+}
+
+interface PrescriptionCreate {
+    name: string;
+    doctor_name?: string;
+    hospital_name?: string;
+    prescription_date?: string;
+    file_type?: 'image' | 'pdf' | 'other';
+    file_url?: string;
+    notes?: string;
 }
 
 // ============ Medicine Service ============
 export const medicineService = {
-    getMedicines: () => placeholder('/medicines'),
-    addMedicine: (medicine: Medicine) => placeholder('/medicines'),
-    toggleMedicineTaken: (id: string) => placeholder(`/medicines/${id}/toggle`),
-    deleteMedicine: (id: string) => placeholder(`/medicines/${id}`),
-    getPrescriptions: () => placeholder('/prescriptions'),
-    addPrescription: (prescription: Prescription) => placeholder('/prescriptions'),
-    deletePrescription: (id: string) => placeholder(`/prescriptions/${id}`),
+    // Medicines CRUD
+    getMedicines: (isActive?: boolean) => {
+        const params = isActive !== undefined ? `?is_active=${isActive}` : '';
+        return apiCall<Medicine[]>(`/medicine/medicines/${params}`);
+    },
+    getMedicine: (id: string) => apiCall<Medicine>(`/medicine/medicines/${id}/`),
+    addMedicine: (medicine: MedicineCreate) =>
+        apiCall<Medicine>('/medicine/medicines/', { method: 'POST', body: medicine as unknown as Record<string, unknown> }),
+    updateMedicine: (id: string, medicine: Partial<MedicineCreate>) =>
+        apiCall<Medicine>(`/medicine/medicines/${id}/`, { method: 'PATCH', body: medicine as unknown as Record<string, unknown> }),
+    deleteMedicine: (id: string) =>
+        apiCall<void>(`/medicine/medicines/${id}/`, { method: 'DELETE' }),
+
+    // Today's schedule
+    getTodayMedicines: (date?: string) => {
+        const params = date ? `?date=${date}` : '';
+        return apiCall<TodayMedicine[]>(`/medicine/today/${params}`);
+    },
+
+    // Intake management
+    toggleMedicineIntake: (intakeId: string, status?: 'taken' | 'missed' | 'skipped' | 'pending', notes?: string) =>
+        apiCall<MedicineIntake>(`/medicine/intakes/${intakeId}/toggle/`, {
+            method: 'POST',
+            body: { status, notes } as Record<string, unknown>,
+        }),
+    getIntakes: (params?: { date?: string; medicine_id?: string; status?: string }) => {
+        const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+        return apiCall<MedicineIntake[]>(`/medicine/intakes/${queryString}`);
+    },
+
+    // Summary
+    getSummary: () => apiCall<MedicineSummary>('/medicine/summary/'),
+
+    // Prescriptions CRUD
+    getPrescriptions: () => apiCall<Prescription[]>('/medicine/prescriptions/'),
+    getPrescription: (id: string) => apiCall<Prescription>(`/medicine/prescriptions/${id}/`),
+    addPrescription: (prescription: PrescriptionCreate) =>
+        apiCall<Prescription>('/medicine/prescriptions/', { method: 'POST', body: prescription as unknown as Record<string, unknown> }),
+    updatePrescription: (id: string, prescription: Partial<PrescriptionCreate>) =>
+        apiCall<Prescription>(`/medicine/prescriptions/${id}/`, { method: 'PATCH', body: prescription as unknown as Record<string, unknown> }),
+    deletePrescription: (id: string) =>
+        apiCall<void>(`/medicine/prescriptions/${id}/`, { method: 'DELETE' }),
 };
 
-// ============ Step Service ============
-export const stepService = {
-    getStepData: () => placeholder('/steps'),
-    addManualSteps: (steps: number) => placeholder('/steps/manual'),
-    getStepGoals: () => placeholder('/steps/goals'),
-    updateStepGoal: (goal: number) => placeholder('/steps/goals'),
-    connectGoogleFit: () => placeholder('/steps/google-fit/connect'),
-    disconnectGoogleFit: () => placeholder('/steps/google-fit/disconnect'),
-};
+// ════════════════════════════════════════════════════════════════════
+// WATER SERVICE — Connected to /api/v1/water/
+// ════════════════════════════════════════════════════════════════════
+
+interface TodayWater {
+    date: string;
+    glasses: number;
+    goal_glasses: number;
+    glass_size_ml: number;
+    total_ml: number;
+    progress_percent: number;
+    goal_reached: boolean;
+    streak: number;
+    reminder_enabled: boolean;
+}
+
+interface WaterGoal {
+    id: string | null;
+    daily_glasses: number;
+    glass_size_ml: number;
+    daily_target_ml: number;
+    reminder_enabled: boolean;
+    reminder_interval_hours: number;
+    is_active: boolean;
+}
+
+interface WaterHistory {
+    date: string;
+    glasses: number;
+    goal_glasses: number;
+    total_ml: number;
+    progress_percent: number;
+    goal_reached: boolean;
+}
+
+interface WaterStats {
+    current_streak: number;
+    longest_streak: number;
+    total_glasses_7d: number;
+    total_glasses_30d: number;
+    avg_glasses_7d: number;
+    avg_glasses_30d: number;
+    goals_met_7d: number;
+    goals_met_30d: number;
+}
 
 // ============ Water Service ============
 export const waterService = {
-    getWaterData: () => placeholder('/water'),
-    addGlass: () => placeholder('/water/add'),
-    removeGlass: () => placeholder('/water/remove'),
-    getWaterHistory: () => placeholder('/water/history'),
+    // Today's water data
+    getWaterData: () => apiCall<TodayWater>('/water/today/'),
+
+    // Add/Remove glasses
+    addGlass: (count: number = 1, notes?: string) =>
+        apiCall<TodayWater>('/water/add/', {
+            method: 'POST',
+            body: { count, notes } as Record<string, unknown>,
+        }),
+    removeGlass: (count: number = 1) =>
+        apiCall<TodayWater>('/water/remove/', {
+            method: 'POST',
+            body: { count } as Record<string, unknown>,
+        }),
+
+    // History and stats
+    getWaterHistory: (days: number = 7) =>
+        apiCall<WaterHistory[]>(`/water/history/?days=${days}`),
+    getWaterStats: () => apiCall<WaterStats>('/water/stats/'),
+
+    // Goal management
+    getGoal: () => apiCall<WaterGoal>('/water/goal/'),
+    updateGoal: (goal: Partial<Omit<WaterGoal, 'id' | 'daily_target_ml'>>) =>
+        apiCall<WaterGoal>('/water/goal/', {
+            method: 'PUT',
+            body: goal as Record<string, unknown>,
+        }),
 };
+
+// ════════════════════════════════════════════════════════════════════
+// STEPS SERVICE — Connected to /api/v1/steps/
+// ════════════════════════════════════════════════════════════════════
+
+export interface TodaySteps {
+    id: string | null;
+    date: string;
+    total_steps: number;
+    manual_steps: number;
+    synced_steps: number;
+    goal_steps: number;
+    goal_met: boolean;
+    calories_burned: number;
+    distance_km: number;
+    active_minutes: number;
+    source: string;
+    progress_percent: number;
+}
+
+export interface StepGoalData {
+    id: string;
+    daily_goal: number;
+    stride_length_cm: number;
+    calories_per_step: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface StepStats {
+    today_steps: number;
+    today_goal: number;
+    today_progress: number;
+    today_calories: number;
+    today_distance_km: number;
+    today_active_minutes: number;
+    current_streak: number;
+    longest_streak: number;
+    week_total_steps: number;
+    week_avg_steps: number;
+    week_days_goal_met: number;
+    month_total_steps: number;
+    month_avg_steps: number;
+    month_days_goal_met: number;
+}
+
+export interface WeeklyChart {
+    labels: string[];
+    data: number[];
+    goals: number[];
+}
+
+export interface StepEntryData {
+    id: string;
+    date: string;
+    steps: number;
+    source: string;
+    source_display: string;
+    notes: string;
+    recorded_at: string;
+    created_at: string;
+}
+
+// ============ Step Service ============
+export const stepService = {
+    // Today's step data
+    getStepData: () => apiCall<TodaySteps>('/steps/today/'),
+
+    // Add/Remove steps
+    addManualSteps: (steps: number, notes?: string) =>
+        apiCall<TodaySteps>('/steps/add/', {
+            method: 'POST',
+            body: { steps, notes } as Record<string, unknown>,
+        }),
+    removeSteps: (steps: number) =>
+        apiCall<TodaySteps>('/steps/remove/', {
+            method: 'POST',
+            body: { steps } as Record<string, unknown>,
+        }),
+
+    // Goal management
+    getStepGoal: () => apiCall<StepGoalData>('/steps/goal/'),
+    updateStepGoal: (goal: Partial<StepGoalData>) =>
+        apiCall<StepGoalData>('/steps/goal/', {
+            method: 'PUT',
+            body: goal as Record<string, unknown>,
+        }),
+
+    // History for charts
+    getStepHistory: (days: number = 7) =>
+        apiCall<TodaySteps[]>(`/steps/history/?days=${days}`),
+
+    // Stats
+    getStepStats: () => apiCall<StepStats>('/steps/stats/'),
+
+    // Weekly chart data
+    getWeeklyChart: () => apiCall<WeeklyChart>('/steps/weekly-chart/'),
+
+    // Entries
+    getEntries: () => apiCall<StepEntryData[]>('/steps/entries/'),
+};
+
+// ============ Types for Family ============
+export interface FamilyLink {
+    id: string;
+    parent_id: string;
+    parent_info: {
+        id: string;
+        email: string;
+        full_name: string;
+    };
+    relationship: string;
+    relationship_display: string;
+    is_active: boolean;
+    linked_at: string;
+}
+
+export interface ParentHealthSummary {
+    parent_id: string;
+    parent_name: string;
+    relationship: string;
+    latest_bp: string | null;
+    bp_status: string | null;
+    bp_recorded_at: string | null;
+    latest_sugar: string | null;
+    sugar_status: string | null;
+    sugar_recorded_at: string | null;
+    latest_heart_rate: number | null;
+    heart_rate_status: string | null;
+    heart_rate_recorded_at: string | null;
+    medicines_today_total: number;
+    medicines_today_taken: number;
+    medicine_adherence_percent: number;
+    water_glasses_today: number;
+    water_goal_today: number;
+    overall_status: 'good' | 'warning' | 'danger';
+    last_activity: string | null;
+}
+
+export interface LinkCodeInfo {
+    link_code: string;
+    linked_children_count: number;
+}
 
 // ============ Family Service ============
 export const familyService = {
-    linkParent: (linkCode: string) => placeholder('/family/link'),
-    unlinkParent: (parentId: string) => placeholder(`/family/unlink/${parentId}`),
-    getLinkedParents: () => placeholder('/family/parents'),
-    getParentHealth: (parentId: string) => placeholder(`/family/parents/${parentId}/health`),
+    // Link to a parent using their code
+    linkParent: (linkCode: string, relationship: string = 'other') =>
+        apiCall<FamilyLink>('/family/link/', {
+            method: 'POST',
+            body: { link_code: linkCode, relationship },
+        }),
+
+    // Unlink from a parent
+    unlinkParent: (parentId: string) =>
+        apiCall<{ message: string }>(`/family/unlink/${parentId}/`, {
+            method: 'POST',
+        }),
+
+    // Get all linked parents
+    getLinkedParents: () => apiCall<FamilyLink[]>('/family/parents/'),
+
+    // Get a parent's health summary
+    getParentHealth: (parentId: string) =>
+        apiCall<ParentHealthSummary>(`/family/parents/${parentId}/health/`),
+
+    // Get my link code (for parents to share with children)
+    getMyLinkCode: () => apiCall<LinkCodeInfo>('/family/my-code/'),
+
+    // Regenerate my link code
+    regenerateLinkCode: () =>
+        apiCall<LinkCodeInfo & { message: string }>('/family/my-code/', {
+            method: 'POST',
+        }),
 };
 
-interface Doctor {
+// ============ Types for Doctor ============
+export interface Doctor {
     id: string;
     name: string;
-    specialty?: string;
-    phone?: string;
-    address?: string;
-    isPrimary?: boolean;
+    specialty: string;
+    specialty_display: string;
+    phone: string;
+    email: string;
+    hospital: string;
+    address: string;
+    notes: string;
+    is_primary: boolean;
+    appointments_count: number;
+    created_at: string;
+    updated_at: string;
 }
 
-interface Appointment {
+export interface Appointment {
     id: string;
-    doctorId?: string;
-    date: string;
-    time?: string;
-    reason?: string;
-    status?: string;
+    doctor: string | null;
+    doctor_name: string;
+    specialty: string;
+    appointment_date: string;
+    appointment_time: string | null;
+    reason: string;
+    location: string;
+    status: 'scheduled' | 'completed' | 'cancelled' | 'missed';
+    status_display: string;
+    notes: string;
+    reminder_sent: boolean;
+    documents_count?: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface MedicalDocument {
+    id: string;
+    doctor: string | null;
+    doctor_name: string | null;
+    appointment: string | null;
+    title: string;
+    document_type: string;
+    document_type_display: string;
+    document_date: string;
+    file: string | null;
+    file_url: string;
+    notes: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AppointmentStats {
+    upcoming_count: number;
+    completed_count: number;
+    cancelled_count: number;
+    missed_count: number;
+    next_appointment: Appointment | null;
+    recent_appointments: Appointment[];
 }
 
 // ============ Doctor Service ============
 export const doctorService = {
-    getDoctors: () => placeholder('/doctors'),
-    addDoctor: (doctor: Doctor) => placeholder('/doctors'),
-    getAppointments: () => placeholder('/appointments'),
-    addAppointment: (appointment: Appointment) => placeholder('/appointments'),
-    getDocuments: () => placeholder('/documents'),
-    generateHealthReport: () => placeholder('/documents/health-report'),
+    // Doctors
+    getDoctors: () => apiCall<Doctor[]>('/doctor/doctors/'),
+    
+    getDoctor: (id: string) => apiCall<Doctor>(`/doctor/doctors/${id}/`),
+    
+    addDoctor: (doctor: Partial<Doctor>) =>
+        apiCall<Doctor>('/doctor/doctors/', {
+            method: 'POST',
+            body: doctor as Record<string, unknown>,
+        }),
+    
+    updateDoctor: (id: string, doctor: Partial<Doctor>) =>
+        apiCall<Doctor>(`/doctor/doctors/${id}/`, {
+            method: 'PATCH',
+            body: doctor as Record<string, unknown>,
+        }),
+    
+    deleteDoctor: (id: string) =>
+        apiCall<void>(`/doctor/doctors/${id}/`, {
+            method: 'DELETE',
+        }),
+    
+    // Appointments
+    getAppointments: (filters?: { status?: string; time?: 'upcoming' | 'past'; doctor?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.status) params.append('status', filters.status);
+        if (filters?.time) params.append('time', filters.time);
+        if (filters?.doctor) params.append('doctor', filters.doctor);
+        const queryString = params.toString();
+        return apiCall<Appointment[]>(`/doctor/appointments/${queryString ? `?${queryString}` : ''}`);
+    },
+    
+    getAppointment: (id: string) => apiCall<Appointment>(`/doctor/appointments/${id}/`),
+    
+    addAppointment: (appointment: Partial<Appointment>) =>
+        apiCall<Appointment>('/doctor/appointments/', {
+            method: 'POST',
+            body: appointment as Record<string, unknown>,
+        }),
+    
+    updateAppointment: (id: string, appointment: Partial<Appointment>) =>
+        apiCall<Appointment>(`/doctor/appointments/${id}/`, {
+            method: 'PATCH',
+            body: appointment as Record<string, unknown>,
+        }),
+    
+    deleteAppointment: (id: string) =>
+        apiCall<void>(`/doctor/appointments/${id}/`, {
+            method: 'DELETE',
+        }),
+    
+    getAppointmentStats: () => apiCall<AppointmentStats>('/doctor/appointments/stats/'),
+    
+    // Medical Documents
+    getDocuments: (filters?: { type?: string; doctor?: string; appointment?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.type) params.append('type', filters.type);
+        if (filters?.doctor) params.append('doctor', filters.doctor);
+        if (filters?.appointment) params.append('appointment', filters.appointment);
+        const queryString = params.toString();
+        return apiCall<MedicalDocument[]>(`/doctor/documents/${queryString ? `?${queryString}` : ''}`);
+    },
+    
+    getDocument: (id: string) => apiCall<MedicalDocument>(`/doctor/documents/${id}/`),
+    
+    addDocument: (document: Partial<MedicalDocument>) =>
+        apiCall<MedicalDocument>('/doctor/documents/', {
+            method: 'POST',
+            body: document as Record<string, unknown>,
+        }),
+    
+    updateDocument: (id: string, document: Partial<MedicalDocument>) =>
+        apiCall<MedicalDocument>(`/doctor/documents/${id}/`, {
+            method: 'PATCH',
+            body: document as Record<string, unknown>,
+        }),
+    
+    deleteDocument: (id: string) =>
+        apiCall<void>(`/doctor/documents/${id}/`, {
+            method: 'DELETE',
+        }),
 };
 
 // ============ AI Service ============
@@ -367,12 +903,224 @@ export const aiService = {
     getConversationHistory: () => placeholder('/ai/history'),
 };
 
+// ════════════════════════════════════════════════════════════════════
+// COMMUNITY SERVICE — Connected to /api/v1/community/
+// ════════════════════════════════════════════════════════════════════
+
+export interface LeaderboardEntry {
+    rank: number;
+    user_id: string;
+    user_name: string;
+    total_steps: number;
+    avg_steps: number;
+    days_active: number;
+    is_self: boolean;
+}
+
+export interface Leaderboard {
+    period: string;
+    period_label: string;
+    entries: LeaderboardEntry[];
+    my_rank: number | null;
+    my_steps: number;
+    total_participants: number;
+}
+
+export interface CommunityGroupData {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    color: string;
+    is_public: boolean;
+    max_members: number;
+    invite_code: string;
+    member_count: number;
+    created_by: string;
+    created_by_name: string;
+    is_member: boolean;
+    my_role: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface GroupMember {
+    id: string;
+    user_id: string;
+    user_name: string;
+    user_email: string;
+    role: string;
+    role_display: string;
+    is_active: boolean;
+    joined_at: string;
+}
+
+export interface ChallengeData {
+    id: string;
+    title: string;
+    description: string;
+    challenge_type: 'steps' | 'water' | 'medicine' | 'custom';
+    type_display: string;
+    icon: string;
+    color: string;
+    target_value: number;
+    target_unit: string;
+    start_date: string;
+    end_date: string;
+    status: 'upcoming' | 'active' | 'completed' | 'cancelled';
+    status_display: string;
+    days_remaining: number;
+    created_by: string;
+    created_by_name: string;
+    group: string | null;
+    group_name: string | null;
+    is_public: boolean;
+    max_participants: number;
+    participant_count: number;
+    is_joined: boolean;
+    my_progress: number;
+    my_progress_percent: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ChallengeParticipantData {
+    id: string;
+    user_id: string;
+    user_name: string;
+    cached_progress: number;
+    progress_percent: number;
+    is_completed: boolean;
+    joined_at: string;
+    last_progress_update: string | null;
+}
+
+export interface CommunityNotificationData {
+    id: string;
+    notification_type: string;
+    type_display: string;
+    title: string;
+    message: string;
+    is_read: boolean;
+    read_at: string | null;
+    challenge_title: string | null;
+    group_name: string | null;
+    created_at: string;
+}
+
 // ============ Community Service ============
 export const communityService = {
-    getLeaderboard: () => placeholder('/community/leaderboard'),
-    getGroups: () => placeholder('/community/groups'),
-    getChallenges: () => placeholder('/community/challenges'),
-    getNotifications: () => placeholder('/community/notifications'),
+    // ── Leaderboard (Steps Integration) ──────────────────────
+    getLeaderboard: (period: string = 'week', groupId?: string) => {
+        const params = new URLSearchParams({ period });
+        if (groupId) params.append('group', groupId);
+        return apiCall<Leaderboard>(`/community/leaderboard/?${params.toString()}`);
+    },
+
+    // ── Groups ───────────────────────────────────────────────
+    getGroups: () => apiCall<CommunityGroupData[]>('/community/groups/'),
+
+    getGroup: (id: string) => apiCall<CommunityGroupData>(`/community/groups/${id}/`),
+
+    createGroup: (data: { name: string; description?: string; icon?: string; color?: string; is_public?: boolean; max_members?: number }) =>
+        apiCall<CommunityGroupData>('/community/groups/', {
+            method: 'POST',
+            body: data as Record<string, unknown>,
+        }),
+
+    updateGroup: (id: string, data: Partial<{ name: string; description: string; icon: string; color: string; is_public: boolean; max_members: number }>) =>
+        apiCall<CommunityGroupData>(`/community/groups/${id}/`, {
+            method: 'PATCH',
+            body: data as Record<string, unknown>,
+        }),
+
+    deleteGroup: (id: string) =>
+        apiCall<void>(`/community/groups/${id}/`, { method: 'DELETE' }),
+
+    getGroupMembers: (id: string) =>
+        apiCall<GroupMember[]>(`/community/groups/${id}/members/`),
+
+    joinGroup: (inviteCode: string) =>
+        apiCall<CommunityGroupData>('/community/groups/join/', {
+            method: 'POST',
+            body: { invite_code: inviteCode },
+        }),
+
+    leaveGroup: (id: string) =>
+        apiCall<{ message: string }>(`/community/groups/${id}/leave/`, {
+            method: 'POST',
+        }),
+
+    // ── Challenges ───────────────────────────────────────────
+    getChallenges: (filters?: { status?: string; type?: string; joined?: boolean }) => {
+        const params = new URLSearchParams();
+        if (filters?.status) params.append('status', filters.status);
+        if (filters?.type) params.append('type', filters.type);
+        if (filters?.joined) params.append('joined', 'true');
+        const qs = params.toString();
+        return apiCall<ChallengeData[]>(`/community/challenges/${qs ? `?${qs}` : ''}`);
+    },
+
+    getChallenge: (id: string) =>
+        apiCall<ChallengeData>(`/community/challenges/${id}/`),
+
+    createChallenge: (data: {
+        title: string; description?: string; challenge_type?: string;
+        icon?: string; color?: string;
+        target_value: number; target_unit?: string;
+        start_date: string; end_date: string;
+        group?: string; is_public?: boolean; max_participants?: number;
+    }) =>
+        apiCall<ChallengeData>('/community/challenges/', {
+            method: 'POST',
+            body: data as Record<string, unknown>,
+        }),
+
+    joinChallenge: (id: string) =>
+        apiCall<ChallengeData>(`/community/challenges/${id}/join/`, {
+            method: 'POST',
+        }),
+
+    leaveChallenge: (id: string) =>
+        apiCall<{ message: string }>(`/community/challenges/${id}/leave/`, {
+            method: 'POST',
+        }),
+
+    getChallengeParticipants: (id: string) =>
+        apiCall<ChallengeParticipantData[]>(`/community/challenges/${id}/participants/`),
+
+    refreshChallengeProgress: (id: string) =>
+        apiCall<{
+            challenge_id: string;
+            cached_progress: number;
+            target_value: number;
+            progress_percent: number;
+            is_completed: boolean;
+        }>(`/community/challenges/${id}/refresh/`, { method: 'POST' }),
+
+    cancelChallenge: (id: string) =>
+        apiCall<{ message: string }>(`/community/challenges/${id}/`, {
+            method: 'DELETE',
+        }),
+
+    // ── Notifications ────────────────────────────────────────
+    getNotifications: (unreadOnly?: boolean) => {
+        const params = unreadOnly ? '?unread=true' : '';
+        return apiCall<CommunityNotificationData[]>(`/community/notifications/${params}`);
+    },
+
+    markNotificationRead: (id: string) =>
+        apiCall<CommunityNotificationData>(`/community/notifications/${id}/read/`, {
+            method: 'POST',
+        }),
+
+    markAllNotificationsRead: () =>
+        apiCall<{ message: string }>('/community/notifications/read-all/', {
+            method: 'POST',
+        }),
+
+    getUnreadCount: () =>
+        apiCall<{ unread_count: number }>('/community/notifications/unread-count/'),
 };
 
 interface BMIRecord {
