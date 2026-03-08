@@ -897,10 +897,78 @@ export const doctorService = {
         }),
 };
 
-// ============ AI Service ============
+// ════════════════════════════════════════════════════════════════════
+// AI SERVICE — Connected to /api/v1/ai/
+// ════════════════════════════════════════════════════════════════════
+
+export interface AIMessageData {
+    id: number;
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    tokens_used: number | null;
+    model_used: string;
+    created_at: string;
+}
+
+export interface AIConversationData {
+    id: string;
+    title: string;
+    is_active: boolean;
+    last_message: string;
+    message_count: number;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface AIConversationDetailData extends AIConversationData {
+    messages: AIMessageData[];
+}
+
+export interface AIChatResponse {
+    conversation_id: string;
+    user_message: AIMessageData;
+    ai_message: AIMessageData;
+}
+
+export interface AIQuickCheckResponse {
+    reply: string;
+    model: string;
+}
+
 export const aiService = {
-    sendMessage: (message: string) => placeholder('/ai/chat'),
-    getConversationHistory: () => placeholder('/ai/history'),
+    // Send a message (creates new conversation or continues existing one)
+    sendMessage: (message: string, conversationId?: string) =>
+        apiCall<AIChatResponse>('/ai/chat/', {
+            method: 'POST',
+            body: conversationId
+                ? { message, conversation_id: conversationId }
+                : { message },
+        }),
+
+    // Quick one-shot health check (no conversation saved)
+    quickCheck: (message: string) =>
+        apiCall<AIQuickCheckResponse>('/ai/quick-check/', {
+            method: 'POST',
+            body: { message },
+        }),
+
+    // List all conversations
+    getConversations: () =>
+        apiCall<AIConversationData[]>('/ai/conversations/'),
+
+    // Get a single conversation with all messages
+    getConversation: (id: string) =>
+        apiCall<AIConversationDetailData>(`/ai/conversations/${id}/`),
+
+    // Get just messages for a conversation
+    getMessages: (conversationId: string) =>
+        apiCall<AIMessageData[]>(`/ai/conversations/${conversationId}/messages/`),
+
+    // Delete a conversation
+    deleteConversation: (id: string) =>
+        apiCall<void>(`/ai/conversations/${id}/`, {
+            method: 'DELETE',
+        }),
 };
 
 // ════════════════════════════════════════════════════════════════════
