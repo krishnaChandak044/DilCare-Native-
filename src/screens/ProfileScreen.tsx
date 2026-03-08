@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +14,7 @@ import { userService } from '../services/api';
 import { useTranslation } from 'react-i18next';
 import { LANGUAGES } from '../i18n';
 import * as Clipboard from 'expo-clipboard';
+import { useAuth } from '../../App';
 
 interface UserProfile {
     name: string; age: string; phone: string; email: string;
@@ -23,10 +24,30 @@ interface UserProfile {
 const ProfileScreen = () => {
     const navigation = useNavigation();
     const { parentLinkCode, generateNewLinkCode } = useUserMode();
+    const { logout } = useAuth();
     const [isEditing, setIsEditing] = useState(false);
     const [profile, setProfile] = useState<UserProfile>({
         name: '', age: '', phone: '', email: '', address: '', emergencyContact: '', bloodGroup: '',
     });
+
+    // Load profile from API on mount
+    useEffect(() => {
+        (async () => {
+            const res = await userService.getProfile();
+            if (res.data) {
+                const p = res.data as any;
+                setProfile({
+                    name: p.name || [p.first_name, p.last_name].filter(Boolean).join(' ') || '',
+                    age: p.age || '',
+                    phone: p.phone || '',
+                    email: p.email || '',
+                    address: p.address || '',
+                    emergencyContact: p.emergency_contact || p.emergencyContact || '',
+                    bloodGroup: p.blood_group || p.bloodGroup || '',
+                });
+            }
+        })();
+    }, []);
     const [codeCopied, setCodeCopied] = useState(false);
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const { t, i18n } = useTranslation();
@@ -163,7 +184,7 @@ const ProfileScreen = () => {
                 </Card>
 
                 {/* Logout */}
-                <Button variant="destructive" onPress={() => Alert.alert('Logout', 'Logout will be available after backend integration')}
+                <Button variant="destructive" onPress={() => Alert.alert('Sign Out', 'Are you sure you want to sign out?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive', onPress: logout }])}
                     icon={<Ionicons name="log-out" size={18} color={Colors.white} />} style={{ marginTop: 8 }}>
                     Log Out
                 </Button>
